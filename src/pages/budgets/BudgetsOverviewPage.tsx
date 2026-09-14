@@ -349,7 +349,7 @@ export const BudgetsOverviewPage: React.FC = () => {
             label="Target Team *"
             value={selectedTeamId}
             onChange={(e) => setSelectedTeamId(e.target.value)}
-            options={teams.map(t => ({ label: `${t.name} (Current: $${t.remainingBudget.toLocaleString()} left)`, value: t.id }))}
+            options={teams.map(t => ({ label: `${t.name} (Current: $${(t.remainingBudget || 0).toLocaleString()} left)`, value: t.id }))}
           />
 
           <div className="grid grid-cols-2 gap-3">

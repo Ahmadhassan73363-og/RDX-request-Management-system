@@ -244,11 +244,14 @@ class DataService {
   public markNotificationAsRead(id: string) {
     const notifs = this.getNotifications().map(n => n.id === id ? { ...n, read: true } : n);
     storage.set('notifications', notifs);
+    api.markNotificationRead(id, true).catch(() => {});
   }
 
   public markAllNotificationsAsRead() {
-    const notifs = this.getNotifications().map(n => ({ ...n, read: true }));
-    storage.set('notifications', notifs);
+    const notifs = this.getNotifications();
+    const unread = notifs.filter(n => !n.read);
+    storage.set('notifications', notifs.map(n => ({ ...n, read: true })));
+    unread.forEach(n => api.markNotificationRead(n.id, true).catch(() => {}));
   }
 
   public clearAllNotifications() {
@@ -374,7 +377,7 @@ class DataService {
       this.logAudit('ROLE_CREATE', 'Role', savedRole.id, `Created dynamic role ${savedRole.name} with ${savedRole.permissions.length} permissions`, actor, undefined, JSON.stringify(savedRole));
     }
     storage.set('roles', roles);
-    // Roles are not in the API yet, but persist via bootstrap
+    api.saveRole(savedRole).catch(() => {});
     return savedRole;
   }
 
@@ -386,6 +389,7 @@ class DataService {
     }
     roles = roles.filter(r => r.id !== roleId);
     storage.set('roles', roles);
+    api.deleteRole(roleId).catch(() => {});
     this.logAudit('ROLE_UPDATE', 'Role', roleId, `Deleted custom role ${role.name}`, actor);
   }
 

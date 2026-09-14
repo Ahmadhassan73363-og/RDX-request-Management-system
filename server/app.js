@@ -403,6 +403,54 @@ app.delete('/api/users/:id', async (req, res) => {
 });
 
 // ----------------------------------------------------
+// ROLES
+// ----------------------------------------------------
+app.get('/api/roles', async (req, res) => {
+  try {
+    const result = await pool.query('SELECT * FROM roles ORDER BY name ASC');
+    res.json(result.rows.map(mapRole));
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/roles', async (req, res) => {
+  const r = req.body;
+  try {
+    const result = await pool.query(
+      `INSERT INTO roles (id, name, description, is_system, color, permissions)
+       VALUES ($1, $2, $3, $4, $5, $6)
+       ON CONFLICT (id) DO UPDATE SET
+         name = COALESCE(EXCLUDED.name, roles.name),
+         description = COALESCE(EXCLUDED.description, roles.description),
+         color = COALESCE(EXCLUDED.color, roles.color),
+         permissions = COALESCE(EXCLUDED.permissions, roles.permissions)
+       RETURNING *`,
+      [
+        r.id || `role-${Date.now()}`,
+        r.name,
+        r.description || '',
+        r.isSystem ?? false,
+        r.color || '#6366f1',
+        JSON.stringify(r.permissions || [])
+      ]
+    );
+    res.status(201).json(mapRole(result.rows[0]));
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.delete('/api/roles/:id', async (req, res) => {
+  try {
+    await pool.query('DELETE FROM roles WHERE id = $1', [req.params.id]);
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ----------------------------------------------------
 // TEAMS
 // ----------------------------------------------------
 app.get('/api/teams', async (req, res) => {

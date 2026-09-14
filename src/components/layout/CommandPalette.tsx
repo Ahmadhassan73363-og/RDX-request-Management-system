@@ -35,7 +35,11 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({ isOpen, onClose,
   const requests = dataService.getRequests();
   const teams = dataService.getTeams();
 
-  const q = query.trim().toLowerCase();
+  const rawQuery = query.trim().toLowerCase();
+  // Support the "switch to [role]" phrasing shown in the placeholder — strip the
+  // command prefix so the remainder is matched as a plain role/name search.
+  const switchToMatch = rawQuery.match(/^switch to\s+(.+)$/);
+  const q = switchToMatch ? switchToMatch[1] : rawQuery;
 
   const filteredRequests = q
     ? requests.filter(r =>

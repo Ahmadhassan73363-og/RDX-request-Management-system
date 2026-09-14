@@ -215,11 +215,11 @@ export const ApprovalsQueuePage: React.FC<ApprovalsQueuePageProps> = ({ onNaviga
                   <div className="p-3 rounded-xl bg-muted/40 border border-border/80 space-y-1.5 font-mono">
                     <div className="flex items-center justify-between">
                       <span className="text-muted-foreground">Retail Value:</span>
-                      <span className="font-semibold text-foreground">${req.requestValue.toLocaleString()}</span>
+                      <span className="font-semibold text-foreground">${(req.requestValue || 0).toLocaleString()}</span>
                     </div>
                     <div className="flex items-center justify-between pt-1 border-t border-border/60 font-bold">
                       <span className="text-primary">Budget Deduct:</span>
-                      <span className="text-sm text-primary">${req.budgetAmount.toLocaleString()}</span>
+                      <span className="text-sm text-primary">${(req.budgetAmount || 0).toLocaleString()}</span>
                     </div>
                   </div>
 
@@ -233,12 +233,12 @@ export const ApprovalsQueuePage: React.FC<ApprovalsQueuePageProps> = ({ onNaviga
                     {!hasSufficient ? (
                       <div className="p-2 rounded-lg bg-rose-500/10 border border-rose-500/20 text-[11px] text-rose-700 dark:text-rose-400 flex items-center gap-1.5 font-semibold">
                         <AlertTriangle className="w-3.5 h-3.5 shrink-0" />
-                        <span>Insufficient team budget (-${(req.budgetAmount - remaining).toLocaleString()})</span>
+                        <span>Insufficient team budget (-${((req.budgetAmount || 0) - remaining).toLocaleString()})</span>
                       </div>
                     ) : (
                       <div className="p-2 rounded-lg bg-emerald-500/10 border border-emerald-500/20 text-[11px] text-emerald-700 dark:text-emerald-400 flex items-center gap-1.5 font-medium">
                         <CheckCircle2 className="w-3.5 h-3.5 shrink-0" />
-                        <span>Budget available (${(remaining - req.budgetAmount).toLocaleString()} after deduct)</span>
+                        <span>Budget available (${(remaining - (req.budgetAmount || 0)).toLocaleString()} after deduct)</span>
                       </div>
                     )}
 
@@ -333,7 +333,7 @@ export const ApprovalsQueuePage: React.FC<ApprovalsQueuePageProps> = ({ onNaviga
               </div>
               <div className="flex items-center justify-between font-mono">
                 <span>Budget Charge:</span>
-                <strong className="text-primary font-bold">${selectedRequest.budgetAmount.toLocaleString()}</strong>
+                <strong className="text-primary font-bold">${(selectedRequest.budgetAmount || 0).toLocaleString()}</strong>
               </div>
             </div>
 

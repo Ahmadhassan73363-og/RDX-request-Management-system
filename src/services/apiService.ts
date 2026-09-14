@@ -51,6 +51,14 @@ export const api = {
     return request('deleteUser', `/api/users/${userId}`, { method: 'DELETE' });
   },
 
+  saveRole(role: any) {
+    return request('saveRole', '/api/roles', { method: 'POST', ...jsonBody(role) });
+  },
+
+  deleteRole(roleId: string) {
+    return request('deleteRole', `/api/roles/${roleId}`, { method: 'DELETE' });
+  },
+
   saveTeam(team: any) {
     const method = team.id ? 'PUT' : 'POST';
     const url = team.id ? `/api/teams/${team.id}` : '/api/teams';
@@ -91,6 +99,10 @@ export const api = {
 
   addNotification(notif: any) {
     return request('addNotification', '/api/notifications', { method: 'POST', ...jsonBody(notif) });
+  },
+
+  markNotificationRead(id: string, isRead: boolean = true) {
+    return request('markNotificationRead', `/api/notifications/${id}`, { method: 'PUT', ...jsonBody({ isRead }) });
   },
 
   updateSettings(settings: any) {
