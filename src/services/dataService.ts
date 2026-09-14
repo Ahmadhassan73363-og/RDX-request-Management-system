@@ -14,7 +14,7 @@ import {
 import { Role, Permission } from '../types/rbac';
 import { User } from '../types/user';
 import { Team } from '../types/team';
-import { GiftRequest, RequestStatus, RequestPriority, SkuItem, ShipmentStatus } from '../types/request';
+import { RequestRecord, RequestStatus, RequestPriority, SkuItem, ShipmentStatus } from '../types/request';
 import { FormSchema, FormAssignment, FormSubmission } from '../types/form';
 import { BudgetTransaction, BudgetActionType } from '../types/budget';
 import { Notification, NotificationType } from '../types/notification';
@@ -36,7 +36,17 @@ class DataService {
       if (!data) return;
 
       if (Array.isArray(data.roles) && data.roles.length) storage.set('roles', data.roles);
-      if (Array.isArray(data.users) && data.users.length) storage.set('users', data.users);
+      if (Array.isArray(data.users) && data.users.length) {
+        // The users table has no password column, so DB rows never carry one.
+        // Preserve the previously-known local/demo password instead of wiping it out.
+        const existingUsers = this.getUsers();
+        const usersWithPasswords = data.users.map((u: User) => {
+          const existing = existingUsers.find(eu => eu.id === u.id || eu.email?.toLowerCase() === u.email?.toLowerCase());
+          const initMatch = INITIAL_USERS.find(iu => iu.id === u.id || iu.email.toLowerCase() === u.email?.toLowerCase());
+          return { ...u, password: u.password || existing?.password || initMatch?.password || 'admin@123' };
+        });
+        storage.set('users', usersWithPasswords);
+      }
       if (Array.isArray(data.teams) && data.teams.length) storage.set('teams', data.teams);
       if (Array.isArray(data.requests) && data.requests.length) storage.set('requests', data.requests);
       if (Array.isArray(data.forms) && data.forms.length) storage.set('forms', data.forms);
@@ -45,7 +55,7 @@ class DataService {
       if (Array.isArray(data.notifications) && data.notifications.length) storage.set('notifications', data.notifications);
       if (Array.isArray(data.auditLogs) && data.auditLogs.length) storage.set('audit_logs', data.auditLogs);
       if (data.settings) storage.set('settings', data.settings);
-      console.log('✨ Synchronized state with local PostgreSQL database (rdx_gift_db)');
+      console.log('✨ Synchronized state with local PostgreSQL database (rdx_request_db)');
     } catch (err) {
       console.warn('Database sync skipped (offline or server starting)', err);
     }
@@ -545,14 +555,14 @@ class DataService {
     api.addBudgetTransaction(newTxn).catch(() => {});
   }
 
-  // --- Gift Requests & Approvals ---
+  // --- Requests & Approvals ---
   public getRequests(filters?: {
     teamId?: string;
     status?: RequestStatus;
     search?: string;
     priority?: RequestPriority;
-  }): GiftRequest[] {
-    let requests = storage.get<GiftRequest[]>('requests', INITIAL_REQUESTS);
+  }): RequestRecord[] {
+    let requests = storage.get<RequestRecord[]>('requests', INITIAL_REQUESTS);
     if (!filters) return requests;
 
     if (filters.teamId) {
@@ -570,14 +580,14 @@ class DataService {
         r.trackingNumber.toLowerCase().includes(q) ||
         r.customerName.toLowerCase().includes(q) ||
         r.customerCompany.toLowerCase().includes(q) ||
-        r.giftItem.toLowerCase().includes(q) ||
+        r.requestItem.toLowerCase().includes(q) ||
         r.reason.toLowerCase().includes(q)
       );
     }
     return requests;
   }
 
-  public getRequestById(id: string): GiftRequest | undefined {
+  public getRequestById(id: string): RequestRecord | undefined {
     return this.getRequests().find(r => r.id === id);
   }
 
@@ -597,10 +607,10 @@ class DataService {
 
       customerName?: string;
       customerCompany?: string;
-      giftCategory?: string;
-      giftItem?: string;
+      requestCategory?: string;
+      requestItem?: string;
       discountPercentage?: number;
-      giftValue?: number;
+      requestValue?: number;
       teamId?: string;
       reason?: string;
       priority?: RequestPriority;
@@ -613,7 +623,7 @@ class DataService {
       customFields?: Record<string, any>;
     },
     actor: User
-  ): GiftRequest {
+  ): RequestRecord {
     const teams = this.getTeams();
     const team = teams.find(t => t.id === payload.teamId) || teams.find(t => t.id === actor.teamId) || teams[0];
     if (!team) throw new Error('No team allocated');
@@ -639,10 +649,10 @@ class DataService {
         : Math.round(numQty * numCostPerUnit * 100) / 100);
 
     const discountMultiplier = Math.max(0, 1 - ((payload.discountPercentage || 0) / 100));
-    const discountBudgetAmount = Math.round((Number(payload.giftValue) || 0) * discountMultiplier * 100) / 100;
+    const discountBudgetAmount = Math.round((Number(payload.requestValue) || 0) * discountMultiplier * 100) / 100;
 
-    const budgetAmount = calculatedSkuTotal > 0 ? calculatedSkuTotal : (discountBudgetAmount > 0 ? discountBudgetAmount : (Number(payload.giftValue) || 0));
-    const giftValue = (Number(payload.giftValue) || 0) > 0 ? Number(payload.giftValue) : budgetAmount;
+    const budgetAmount = calculatedSkuTotal > 0 ? calculatedSkuTotal : (discountBudgetAmount > 0 ? discountBudgetAmount : (Number(payload.requestValue) || 0));
+    const requestValue = (Number(payload.requestValue) || 0) > 0 ? Number(payload.requestValue) : budgetAmount;
 
     const remainingBudget = team.remainingBudget;
     const budgetAfterApproval = remainingBudget - budgetAmount;
@@ -654,22 +664,22 @@ class DataService {
     const effectiveDate = payload.date || payload.deliveryTargetDate || new Date().toISOString().split('T')[0];
     const effectiveCompany = payload.businessName || payload.customerCompany || 'Enterprise Client';
     const effectiveName = payload.agentOrTeamName || payload.customerName || actor.name;
-    const effectiveCategory = payload.typeOfFoc || payload.giftCategory || 'Standard FOC';
+    const effectiveCategory = payload.typeOfFoc || payload.requestCategory || 'Standard FOC';
     const effectiveItem = hasMultiSku && multiSkuSummary
       ? `${multiSkuSummary} (Total Qty: ${numQty})`
       : (payload.sampleSku
         ? (payload.sampleSku + (numQty > 0 ? ` (Qty: ${numQty})` : ''))
-        : (payload.giftItem || 'FOC Sample Item'));
+        : (payload.requestItem || 'FOC Sample Item'));
 
-    const newRequest: GiftRequest = {
+    const newRequest: RequestRecord = {
       id: 'req-' + Date.now(),
       trackingNumber,
       customerName: effectiveName,
       customerCompany: effectiveCompany,
-      giftCategory: effectiveCategory,
-      giftItem: effectiveItem,
+      requestCategory: effectiveCategory,
+      requestItem: effectiveItem,
       discountPercentage: payload.discountPercentage || 0,
-      giftValue,
+      requestValue,
       budgetAmount,
       teamId: team.id,
       teamName: payload.agentOrTeamName || team.name,
@@ -738,7 +748,7 @@ class DataService {
 
     this.logAudit(
       'REQUEST_CREATE',
-      'GiftRequest',
+      'RequestRecord',
       newRequest.id,
       `Submitted request ${newRequest.trackingNumber} for ${newRequest.customerName} (${newRequest.customerCompany}) - $${budgetAmount.toLocaleString()}`,
       actor,
@@ -749,7 +759,7 @@ class DataService {
     return newRequest;
   }
 
-  public addCommentToRequest(requestId: string, content: string, actor: User): GiftRequest {
+  public addCommentToRequest(requestId: string, content: string, actor: User): RequestRecord {
     const requests = this.getRequests();
     const req = requests.find(r => r.id === requestId);
     if (!req) throw new Error('Request not found');
@@ -794,7 +804,7 @@ class DataService {
     digitalSignature: string,
     actor: User,
     isOverride: boolean = false
-  ): GiftRequest {
+  ): RequestRecord {
     const requests = this.getRequests();
     const req = requests.find(r => r.id === requestId);
     if (!req) throw new Error('Request not found');
@@ -835,17 +845,17 @@ class DataService {
 
       this.notify(
         req.submittedByUserId,
-        'Gift Request Declined',
+        'Request Declined',
         `Your request ${req.trackingNumber} for ${req.customerCompany} was rejected by ${actor.name} (${actor.roleName}). Reason: ${comments}`,
         'REQUEST_REJECTED',
         req.id,
         'request',
         `/requests`,
         `[DECISION] Request ${req.trackingNumber} Rejected`,
-        `<p>Your gift request has been rejected by <strong>${actor.name}</strong> with the following rationale:</p><blockquote>${comments}</blockquote>`
+        `<p>Your request has been rejected by <strong>${actor.name}</strong> with the following rationale:</p><blockquote>${comments}</blockquote>`
       );
 
-      this.logAudit('REQUEST_REJECT', 'GiftRequest', req.id, `Rejected request ${req.trackingNumber}. Comments: ${comments}`, actor);
+      this.logAudit('REQUEST_REJECT', 'RequestRecord', req.id, `Rejected request ${req.trackingNumber}. Comments: ${comments}`, actor);
       return req;
     }
 
@@ -857,7 +867,7 @@ class DataService {
 
       this.notify(
         req.submittedByUserId,
-        'Changes Requested on Gift Submission',
+        'Changes Requested on Submission',
         `${actor.name} requested modifications on ${req.trackingNumber}: ${comments}`,
         'CHANGES_REQUESTED',
         req.id,
@@ -865,7 +875,7 @@ class DataService {
         `/requests`
       );
 
-      this.logAudit('REQUEST_CHANGE_REQUESTED', 'GiftRequest', req.id, `Requested changes on ${req.trackingNumber}. Comments: ${comments}`, actor);
+      this.logAudit('REQUEST_CHANGE_REQUESTED', 'RequestRecord', req.id, `Requested changes on ${req.trackingNumber}. Comments: ${comments}`, actor);
       return req;
     }
 
@@ -898,7 +908,7 @@ class DataService {
         `/approvals`
       );
 
-      this.logAudit('REQUEST_APPROVE', 'GiftRequest', req.id, `Advanced request ${req.trackingNumber} to stage ${req.currentApprovalStepIndex} (${req.currentApproverRole})`, actor);
+      this.logAudit('REQUEST_APPROVE', 'RequestRecord', req.id, `Advanced request ${req.trackingNumber} to stage ${req.currentApprovalStepIndex} (${req.currentApproverRole})`, actor);
       return req;
     }
 
@@ -927,7 +937,7 @@ class DataService {
       amount: req.budgetAmount,
       balanceBefore,
       balanceAfter,
-      reason: `${isOverride ? '[OVERRIDE] ' : ''}Auto-deduction for fully approved Request ${req.trackingNumber} (${req.giftItem})`,
+      reason: `${isOverride ? '[OVERRIDE] ' : ''}Auto-deduction for fully approved Request ${req.trackingNumber} (${req.requestItem})`,
       requestId: req.id,
       performedByUserId: actor.id,
       performedByUserName: actor.name,
@@ -973,7 +983,7 @@ class DataService {
 
     this.logAudit(
       'REQUEST_APPROVE',
-      'GiftRequest',
+      'RequestRecord',
       req.id,
       `Fully approved ${req.trackingNumber}. Auto-deducted $${req.budgetAmount.toLocaleString()} from ${team.name}. Remaining budget: $${balanceAfter.toLocaleString()}`,
       actor,
@@ -984,7 +994,7 @@ class DataService {
     return req;
   }
 
-  public appealRequest(requestId: string, appealReason: string, actor: User): GiftRequest {
+  public appealRequest(requestId: string, appealReason: string, actor: User): RequestRecord {
     const requests = this.getRequests();
     const req = requests.find(r => r.id === requestId);
     if (!req) throw new Error('Request not found');
@@ -1021,7 +1031,7 @@ class DataService {
       `/approvals`
     );
 
-    this.logAudit('REQUEST_APPROVE', 'GiftRequest', req.id, `Appeal submitted for ${req.trackingNumber} by ${actor.name}. Reason: ${appealReason}`, actor);
+    this.logAudit('REQUEST_APPROVE', 'RequestRecord', req.id, `Appeal submitted for ${req.trackingNumber} by ${actor.name}. Reason: ${appealReason}`, actor);
     return req;
   }
 
@@ -1030,7 +1040,7 @@ class DataService {
     status: ShipmentStatus,
     actor: User,
     note?: string
-  ): GiftRequest {
+  ): RequestRecord {
     const isShipmentManager = actor.roleName === 'Shipment Manager' || actor.roleName === 'Super Admin';
     if (!isShipmentManager) {
       throw new Error('Unauthorized: Only the Shipment Manager role can update shipment status.');
@@ -1075,7 +1085,7 @@ class DataService {
     this.notify(
       req.submittedByUserId,
       `Shipment Update: ${req.trackingNumber}`,
-      `Your gift shipment status has been updated to "${statusLabels[status]}".`,
+      `Your shipment status has been updated to "${statusLabels[status]}".`,
       'SHIPMENT_UPDATED',
       req.id,
       'request',
@@ -1084,7 +1094,7 @@ class DataService {
 
     this.logAudit(
       'SHIPMENT_STATUS_UPDATE',
-      'GiftRequest',
+      'RequestRecord',
       req.id,
       `Shipment status transitioned from ${previousStatus || 'none'} to ${status} by ${actor.name}${note ? ` (Note: ${note})` : ''}`,
       actor

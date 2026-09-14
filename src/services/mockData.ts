@@ -2,7 +2,7 @@ import { Role, Permission, PermissionCategory } from '../types/rbac';
 import { User } from '../types/user';
 import { Team } from '../types/team';
 import { BudgetTransaction } from '../types/budget';
-import { GiftRequest } from '../types/request';
+import { RequestRecord } from '../types/request';
 import { FormSchema, FormAssignment } from '../types/form';
 import { SystemSettings } from '../types/settings';
 import { AuditLog } from '../types/audit';
@@ -475,16 +475,16 @@ export const INITIAL_BUDGET_TRANSACTIONS: BudgetTransaction[] = [
   }
 ];
 
-export const INITIAL_REQUESTS: GiftRequest[] = [
+export const INITIAL_REQUESTS: RequestRecord[] = [
   {
     id: 'req-1',
     trackingNumber: 'GFT-2026-0001',
     customerName: 'Robert Langdon',
     customerCompany: 'Acme Corporation',
-    giftCategory: 'Premium Electronics',
-    giftItem: 'Apple iPad Pro M4 with Engraved Enterprise Crest & Apple Pencil',
+    requestCategory: 'Premium Electronics',
+    requestItem: 'Apple iPad Pro M4 with Engraved Enterprise Crest & Apple Pencil',
     discountPercentage: 20,
-    giftValue: 1400,
+    requestValue: 1400,
     budgetAmount: 1120,
     teamId: 'team-sales',
     teamName: 'Sales Team',
@@ -504,7 +504,7 @@ export const INITIAL_REQUESTS: GiftRequest[] = [
     submittedByUserEmail: 'david.miller@enterprise.com',
     attachments: [
       { id: 'att-1', name: 'Contract_Renewal_Addendum.pdf', size: 2450000, type: 'application/pdf', url: '#', uploadedAt: '2026-02-08T10:30:00Z' },
-      { id: 'att-2', name: 'Gift_Quote_Apple_Store.pdf', size: 840000, type: 'application/pdf', url: '#', uploadedAt: '2026-02-08T10:32:00Z' }
+      { id: 'att-2', name: 'Request_Quote_Apple_Store.pdf', size: 840000, type: 'application/pdf', url: '#', uploadedAt: '2026-02-08T10:32:00Z' }
     ],
     comments: [
       {
@@ -586,10 +586,10 @@ export const INITIAL_REQUESTS: GiftRequest[] = [
     trackingNumber: 'GFT-2026-0002',
     customerName: 'Victoria Hastings',
     customerCompany: 'RDX Financial Partners',
-    giftCategory: 'Luxury Hampers',
-    giftItem: 'Fortnum & Mason Sovereign Executive Hamper & Vintage Cristal Champagne',
+    requestCategory: 'Luxury Hampers',
+    requestItem: 'Fortnum & Mason Sovereign Executive Hamper & Vintage Cristal Champagne',
     discountPercentage: 15,
-    giftValue: 1200,
+    requestValue: 1200,
     budgetAmount: 1020,
     teamId: 'team-corporate',
     teamName: 'Corporate Team',
@@ -655,10 +655,10 @@ export const INITIAL_REQUESTS: GiftRequest[] = [
     trackingNumber: 'GFT-2026-0003',
     customerName: 'Kenji Takahashi',
     customerCompany: 'Nippon Systems International',
-    giftCategory: 'Tech Accessories',
-    giftItem: 'Sony WH-1000XM5 Noise-Canceling Headphones (Custom Branded)',
+    requestCategory: 'Tech Accessories',
+    requestItem: 'Sony WH-1000XM5 Noise-Canceling Headphones (Custom Branded)',
     discountPercentage: 25,
-    giftValue: 400,
+    requestValue: 400,
     budgetAmount: 300,
     teamId: 'team-cs',
     teamName: 'Customer Success',
@@ -700,10 +700,10 @@ export const INITIAL_REQUESTS: GiftRequest[] = [
     trackingNumber: 'GFT-2026-0004',
     customerName: 'Chloe Bennett',
     customerCompany: 'Apex Fintech Solutions',
-    giftCategory: 'Bespoke Experience',
-    giftItem: 'Michelin Star Dining Experience Voucher for 4 at Le Bernardin',
+    requestCategory: 'Bespoke Experience',
+    requestItem: 'Michelin Star Dining Experience Voucher for 4 at Le Bernardin',
     discountPercentage: 10,
-    giftValue: 1800,
+    requestValue: 1800,
     budgetAmount: 1620,
     teamId: 'team-sales',
     teamName: 'Sales Team',
@@ -733,14 +733,14 @@ export const INITIAL_REQUESTS: GiftRequest[] = [
     trackingNumber: 'GFT-2026-0005',
     customerName: 'Julian Sterling',
     customerCompany: 'Vanguard Media Group',
-    giftCategory: 'Premium Apparel',
-    giftItem: 'Bespoke Cashmere Overcoat with Tailoring Consultation',
+    requestCategory: 'Premium Apparel',
+    requestItem: 'Bespoke Cashmere Overcoat with Tailoring Consultation',
     discountPercentage: 5,
-    giftValue: 3500,
+    requestValue: 3500,
     budgetAmount: 3325,
     teamId: 'team-events',
     teamName: 'Events Team',
-    reason: 'Keynote Speaker Honorarium Gift for Annual Media Summit.',
+    reason: 'Keynote Speaker Honorarium Request for Annual Media Summit.',
     requestDate: '2026-02-20',
     deliveryTargetDate: '2026-03-01',
     priority: 'high',
@@ -760,7 +760,7 @@ export const INITIAL_REQUESTS: GiftRequest[] = [
         userId: 'usr-4',
         userName: 'Sophia Chen',
         userRole: 'Assistant',
-        content: 'Requested budget exceeds remaining team balance ($2,800) by $525. Speaker gift guidelines cap single items at $1,500 without prior board sign-off.',
+        content: 'Requested budget exceeds remaining team balance ($2,800) by $525. Speaker request guidelines cap single items at $1,500 without prior board sign-off.',
         createdAt: '2026-02-22T10:00:00Z'
       }
     ],
@@ -800,14 +800,14 @@ export const INITIAL_REQUESTS: GiftRequest[] = [
     trackingNumber: 'GFT-2026-0006',
     customerName: 'Danielle Brooks',
     customerCompany: 'Helios Energy Corp',
-    giftCategory: 'Executive Accessories',
-    giftItem: 'Montblanc Meisterstück LeGrand Fountain Pen (Gold-Coated)',
+    requestCategory: 'Executive Accessories',
+    requestItem: 'Montblanc Meisterstück LeGrand Fountain Pen (Gold-Coated)',
     discountPercentage: 18,
-    giftValue: 850,
+    requestValue: 850,
     budgetAmount: 697,
     teamId: 'team-marketing',
     teamName: 'Marketing Team',
-    reason: 'Signing gift for sustainability consortium partnership agreement.',
+    reason: 'Signing request for sustainability consortium partnership agreement.',
     requestDate: '2026-03-07',
     deliveryTargetDate: '2026-03-30',
     priority: 'normal',
@@ -927,9 +927,9 @@ export const INITIAL_FORMS: FormSchema[] = [
     updatedAt: '2026-01-01T00:00:00Z'
   },
   {
-    id: 'form-std-gift',
-    title: 'Standard Customer Gift Request',
-    description: 'Universal workflow form for submitting corporate packages, customer loyalty perks, and client appreciation gifts.',
+    id: 'form-std-request',
+    title: 'Standard Customer Request',
+    description: 'Universal workflow form for submitting corporate packages, customer loyalty perks, and client appreciation requests.',
     category: 'Sales & Customer Relations',
     version: 1,
     isActive: true,
@@ -956,7 +956,7 @@ export const INITIAL_FORMS: FormSchema[] = [
       {
         id: 'f-3',
         type: 'dropdown',
-        name: 'giftCategory',
+        name: 'requestCategory',
         label: 'Category',
         required: true,
         options: [
@@ -971,7 +971,7 @@ export const INITIAL_FORMS: FormSchema[] = [
       {
         id: 'f-4',
         type: 'text',
-        name: 'giftItem',
+        name: 'requestItem',
         label: 'Specific Item Description',
         placeholder: 'e.g. Apple iPad Pro with Corporate Monogram',
         required: true
@@ -979,8 +979,8 @@ export const INITIAL_FORMS: FormSchema[] = [
       {
         id: 'f-5',
         type: 'currency',
-        name: 'giftValue',
-        label: 'Gift / Package Value ($)',
+        name: 'requestValue',
+        label: 'Request / Package Value ($)',
         placeholder: '1000',
         required: true
       },
@@ -1087,7 +1087,7 @@ export const INITIAL_FORMS: FormSchema[] = [
 export const INITIAL_FORM_ASSIGNMENTS: FormAssignment[] = [
   {
     id: 'asg-1',
-    formId: 'form-std-gift',
+    formId: 'form-std-request',
     targetType: 'entire_team',
     targetTeamId: 'team-sales',
     targetTeamName: 'Sales Team',
@@ -1100,7 +1100,7 @@ export const INITIAL_FORM_ASSIGNMENTS: FormAssignment[] = [
   },
   {
     id: 'asg-2',
-    formId: 'form-std-gift',
+    formId: 'form-std-request',
     targetType: 'entire_team',
     targetTeamId: 'team-marketing',
     targetTeamName: 'Marketing Team',
@@ -1215,7 +1215,7 @@ export const INITIAL_AUDIT_LOGS: AuditLog[] = [
     userEmail: 'david.miller@enterprise.com',
     userRole: 'Admin',
     action: 'REQUEST_CREATE',
-    entityType: 'GiftRequest',
+    entityType: 'RequestRecord',
     entityId: 'req-4',
     description: 'Submitted new Request GFT-2026-0004 for Apex Fintech Solutions ($1,620)',
     oldValue: 'null',
@@ -1231,7 +1231,7 @@ export const INITIAL_AUDIT_LOGS: AuditLog[] = [
     userEmail: 'sophia.chen@enterprise.com',
     userRole: 'Assistant',
     action: 'REQUEST_REJECT',
-    entityType: 'GiftRequest',
+    entityType: 'RequestRecord',
     entityId: 'req-5',
     description: 'Rejected Request GFT-2026-0005 due to budget deficit and compliance cap breach',
     oldValue: JSON.stringify({ status: 'pending_assistant' }),
@@ -1271,7 +1271,7 @@ export const INITIAL_SETTINGS: SystemSettings = {
     warningThresholdPercent: 80,
     criticalThresholdPercent: 100,
     requireExecutiveOverrideWhenExceeded: true,
-    maxGiftDiscountAllowedPercent: 40
+    maxRequestDiscountAllowedPercent: 40
   },
   maxAttachmentSizeMb: 15,
   categories: [

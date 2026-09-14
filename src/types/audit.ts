@@ -32,7 +32,7 @@ export interface AuditLog {
   userEmail: string;
   userRole: string;
   action: AuditActionType;
-  entityType: 'User' | 'Role' | 'Team' | 'Budget' | 'Form' | 'GiftRequest' | 'SystemSettings';
+  entityType: 'User' | 'Role' | 'Team' | 'Budget' | 'Form' | 'RequestRecord' | 'SystemSettings';
   entityId: string;
   description: string;
   oldValue?: string; // JSON or descriptive string

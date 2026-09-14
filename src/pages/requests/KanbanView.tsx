@@ -1,11 +1,11 @@
 import React from 'react';
-import { GiftRequest, RequestStatus } from '../../types/request';
+import { RequestRecord, RequestStatus } from '../../types/request';
 import { StatusBadge, PriorityBadge } from '../../components/common/Badge';
 import { Clock, DollarSign, ArrowRight, User } from 'lucide-react';
 
 interface KanbanViewProps {
-  requests: GiftRequest[];
-  onSelectRequest: (req: GiftRequest) => void;
+  requests: RequestRecord[];
+  onSelectRequest: (req: RequestRecord) => void;
   onMoveStatus?: (requestId: string, newStatus: RequestStatus) => void;
 }
 
@@ -75,7 +75,7 @@ export const KanbanView: React.FC<KanbanViewProps> = ({ requests, onSelectReques
                     </div>
 
                     <div className="p-2 rounded-lg bg-muted/30 border border-border/40 text-[11px] text-muted-foreground space-y-1">
-                      <div className="text-foreground font-medium truncate">{req.giftItem}</div>
+                      <div className="text-foreground font-medium truncate">{req.requestItem}</div>
                       <div className="flex items-center justify-between">
                         <span className="font-mono font-bold text-foreground">
                           ${(req.budgetAmount || 0).toLocaleString()}

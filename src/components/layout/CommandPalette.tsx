@@ -40,7 +40,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({ isOpen, onClose,
         r.trackingNumber.toLowerCase().includes(query.toLowerCase()) ||
         r.customerCompany.toLowerCase().includes(query.toLowerCase()) ||
         r.customerName.toLowerCase().includes(query.toLowerCase()) ||
-        r.giftItem.toLowerCase().includes(query.toLowerCase())
+        r.requestItem.toLowerCase().includes(query.toLowerCase())
       ).slice(0, 4)
     : requests.slice(0, 3);
 
@@ -140,7 +140,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({ isOpen, onClose,
                         <span>• {r.customerCompany}</span>
                       </div>
                       <div className="text-[11px] text-muted-foreground truncate max-w-sm">
-                        {r.giftItem} (${r.budgetAmount.toLocaleString()})
+                        {r.requestItem} (${r.budgetAmount.toLocaleString()})
                       </div>
                     </div>
                     <span className="text-[10px] font-mono uppercase bg-muted px-2 py-0.5 rounded text-muted-foreground">

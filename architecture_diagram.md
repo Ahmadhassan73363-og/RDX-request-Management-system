@@ -1,4 +1,4 @@
-# RDX Gift Management System — Working Architecture
+# RDX Request Management System — Working Architecture
 
 ## 🗺️ High-Level Architecture
 
@@ -59,7 +59,7 @@ sequenceDiagram
     participant Express as Express (app.js)
     participant PG as PostgreSQL
 
-    User->>Page: Perform Action (e.g. Submit Gift Request)
+    User->>Page: Perform Action (e.g. Submit Request)
     Page->>Context: Call context method
     Context->>DS: dataService.createRequest(data)
     DS->>LS: Save to LocalStorage (immediate/optimistic)
@@ -161,7 +161,7 @@ graph LR
     subgraph LOCAL["Local Dev"]
         FE_DEV["Vite Dev Server\n:5173"]
         BE_DEV["Express Server\n:3000 (or PORT env)"]
-        PG_LOCAL["Local PostgreSQL\nrdx_gift_db"]
+        PG_LOCAL["Local PostgreSQL\nrdx_request_db"]
         FE_DEV -->|"proxy /api/*"| BE_DEV
         BE_DEV --> PG_LOCAL
     end

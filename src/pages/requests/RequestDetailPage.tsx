@@ -22,7 +22,7 @@ import {
   FormInput,
   RotateCcw
 } from 'lucide-react';
-import { GiftRequest, RequestStatus, ShipmentStatus } from '../../types/request';
+import { RequestRecord, RequestStatus, ShipmentStatus } from '../../types/request';
 import { useAuth } from '../../context/AuthContext';
 import { dataService } from '../../services/dataService';
 import { Button } from '../../components/common/Button';
@@ -296,7 +296,7 @@ export const RequestDetailPage: React.FC<RequestDetailPageProps> = ({ requestId,
                 </div>
                 <div className="space-y-1">
                   <span className="text-muted-foreground uppercase tracking-wider font-semibold text-[10px]">Type of FOC</span>
-                  <p className="text-sm font-bold text-foreground">{request.typeOfFoc || request.giftCategory}</p>
+                  <p className="text-sm font-bold text-foreground">{request.typeOfFoc || request.requestCategory}</p>
                 </div>
                 <div className="space-y-1">
                   <span className="text-muted-foreground uppercase tracking-wider font-semibold text-[10px]">System Invoice No.</span>
@@ -310,7 +310,7 @@ export const RequestDetailPage: React.FC<RequestDetailPageProps> = ({ requestId,
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs">
                   <div>
                     <span className="text-[10px] text-muted-foreground">Sample SKU:</span>
-                    <p className="font-semibold text-foreground truncate">{request.sampleSku || request.giftItem}</p>
+                    <p className="font-semibold text-foreground truncate">{request.sampleSku || request.requestItem}</p>
                   </div>
                   <div>
                     <span className="text-[10px] text-muted-foreground">QTY:</span>
@@ -550,7 +550,7 @@ export const RequestDetailPage: React.FC<RequestDetailPageProps> = ({ requestId,
               <div className="space-y-3 font-mono text-xs">
                 <div className="flex items-center justify-between pb-2 border-b border-border/80">
                   <span className="text-muted-foreground">Original / Retail Value:</span>
-                  <span className="font-semibold text-foreground">${(request.giftValue || 0).toLocaleString()}</span>
+                  <span className="font-semibold text-foreground">${(request.requestValue || 0).toLocaleString()}</span>
                 </div>
                 <div className="flex items-center justify-between pb-2 border-b border-border/80">
                   <span className="text-muted-foreground font-bold">Total Budget Charged:</span>

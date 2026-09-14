@@ -32,7 +32,7 @@ export const ReportsPage: React.FC = () => {
   const filteredRequests = useMemo(() => {
     return allRequests.filter(r => {
       if (selectedTeam !== 'ALL' && r.teamId !== selectedTeam) return false;
-      if (selectedCategory !== 'ALL' && r.giftCategory !== selectedCategory) return false;
+      if (selectedCategory !== 'ALL' && r.requestCategory !== selectedCategory) return false;
       if (selectedStatus !== 'ALL' && r.status !== selectedStatus) return false;
       if (selectedUser !== 'ALL' && r.submittedByUserId !== selectedUser) return false;
       return true;
@@ -41,7 +41,7 @@ export const ReportsPage: React.FC = () => {
 
   // Aggregate metrics
   const totalVolume = filteredRequests.length;
-  const totalRetailValue = filteredRequests.reduce((sum, r) => sum + (r.giftValue || 0), 0);
+  const totalRetailValue = filteredRequests.reduce((sum, r) => sum + (r.requestValue || 0), 0);
   const totalBudgetSpent = filteredRequests.reduce((sum, r) => sum + (r.budgetAmount || 0), 0);
   const avgRequestValue = totalVolume > 0 ? Math.round(totalBudgetSpent / totalVolume) : 0;
   const approvedCount = filteredRequests.filter(r => r.status === 'approved' || r.status === 'completed').length;
@@ -55,9 +55,9 @@ export const ReportsPage: React.FC = () => {
       `"${r.customerName}"`,
       `"${r.customerCompany}"`,
       `"${r.teamName}"`,
-      `"${r.giftCategory}"`,
-      `"${r.giftItem}"`,
-      r.giftValue,
+      `"${r.requestCategory}"`,
+      `"${r.requestItem}"`,
+      r.requestValue,
       r.budgetAmount,
       r.status,
       r.requestDate
@@ -265,10 +265,10 @@ export const ReportsPage: React.FC = () => {
                       {req.teamName}
                     </td>
                     <td className="p-3 text-foreground/90 max-w-[180px] truncate">
-                      {req.giftItem}
+                      {req.requestItem}
                     </td>
                     <td className="p-3 font-mono text-muted-foreground">
-                      ${(req.giftValue || 0).toLocaleString()}
+                      ${(req.requestValue || 0).toLocaleString()}
                     </td>
                     <td className="p-3 font-mono font-bold text-foreground">
                       ${(req.budgetAmount || 0).toLocaleString()}

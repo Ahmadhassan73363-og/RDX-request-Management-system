@@ -1,12 +1,12 @@
 import React, { useState } from 'react';
-import { GiftRequest } from '../../types/request';
+import { RequestRecord } from '../../types/request';
 import { ChevronLeft, ChevronRight, Calendar as CalendarIcon, Clock, DollarSign } from 'lucide-react';
 import { Button } from '../../components/common/Button';
 import { PriorityBadge, StatusBadge } from '../../components/common/Badge';
 
 interface CalendarViewProps {
-  requests: GiftRequest[];
-  onSelectRequest: (req: GiftRequest) => void;
+  requests: RequestRecord[];
+  onSelectRequest: (req: RequestRecord) => void;
 }
 
 export const CalendarView: React.FC<CalendarViewProps> = ({ requests, onSelectRequest }) => {

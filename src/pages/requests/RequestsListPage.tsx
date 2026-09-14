@@ -14,7 +14,7 @@ import {
   SlidersHorizontal
 } from 'lucide-react';
 import { dataService } from '../../services/dataService';
-import { GiftRequest, RequestStatus, RequestPriority } from '../../types/request';
+import { RequestRecord, RequestStatus, RequestPriority } from '../../types/request';
 import { Button } from '../../components/common/Button';
 import { Card, CardHeader, CardTitle, CardContent } from '../../components/common/Card';
 import { StatusBadge, PriorityBadge } from '../../components/common/Badge';
@@ -59,7 +59,7 @@ export const RequestsListPage: React.FC<RequestsListPageProps> = ({
         r.trackingNumber.toLowerCase().includes(q) ||
         r.customerCompany.toLowerCase().includes(q) ||
         r.customerName.toLowerCase().includes(q) ||
-        r.giftItem.toLowerCase().includes(q) ||
+        r.requestItem.toLowerCase().includes(q) ||
         r.reason.toLowerCase().includes(q)
       );
     }
@@ -91,14 +91,14 @@ export const RequestsListPage: React.FC<RequestsListPageProps> = ({
   }, [allRequests, searchQuery, teamFilter, statusFilter, priorityFilter, sortField, sortOrder, refreshKey]);
 
   const handleExportCSV = () => {
-    const headers = ['Date', 'Agent Name', 'Business Name', 'Category (Sample/Gift)', 'Invoice No', 'Sample SKU', 'Total Quantity', 'Per Unit Cost', 'Total Cost', 'Status', 'Tracking #', 'Priority'];
+    const headers = ['Date', 'Agent Name', 'Business Name', 'Category (Sample/Request)', 'Invoice No', 'Sample SKU', 'Total Quantity', 'Per Unit Cost', 'Total Cost', 'Status', 'Tracking #', 'Priority'];
     const rows = filteredRequests.map(r => [
       r.date || r.requestDate,
       `"${r.agentOrTeamName || r.customerName || r.submittedByUserName}"`,
       `"${r.businessName || r.customerCompany}"`,
-      `"${r.typeOfFoc || r.giftCategory || 'Sample/Gift'}"`,
+      `"${r.typeOfFoc || r.requestCategory || 'Sample/Request'}"`,
       r.systemInvoiceNo || '',
-      `"${r.sampleSku || r.giftItem}"`,
+      `"${r.sampleSku || r.requestItem}"`,
       r.sampleSkuQty || 1,
       r.sampleSkuCostPerUnit || (r.budgetAmount ? Math.round((r.budgetAmount / (r.sampleSkuQty || 1)) * 100) / 100 : 0),
       r.sampleSkuTotal || r.budgetAmount,
@@ -327,9 +327,9 @@ export const RequestsListPage: React.FC<RequestsListPageProps> = ({
                     const reqDate = req.date || req.requestDate || (req.createdAt ? req.createdAt.split('T')[0] : '—');
                     const agentName = req.agentOrTeamName || req.customerName || req.submittedByUserName;
                     const business = req.businessName || req.customerCompany;
-                    const category = req.typeOfFoc || req.giftCategory || 'Sample/Gift';
+                    const category = req.typeOfFoc || req.requestCategory || 'Sample/Request';
                     const invoiceNo = req.systemInvoiceNo || '—';
-                    const sampleSku = req.sampleSku || req.giftItem || '—';
+                    const sampleSku = req.sampleSku || req.requestItem || '—';
                     const qty = req.sampleSkuQty || 1;
                     const unitCost = Number(req.sampleSkuCostPerUnit) || (req.budgetAmount ? Math.round((req.budgetAmount / qty) * 100) / 100 : 0);
                     const totalCost = Number(req.sampleSkuTotal) || req.budgetAmount || 0;

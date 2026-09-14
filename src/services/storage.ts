@@ -1,6 +1,6 @@
 // LocalStorage persistence utility for enterprise state
 
-const PREFIX = 'gift_mgmt_';
+const PREFIX = 'request_mgmt_';
 
 export const storage = {
   get: <T>(key: string, defaultValue: T): T => {

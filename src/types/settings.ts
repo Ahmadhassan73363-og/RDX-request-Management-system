@@ -24,7 +24,7 @@ export interface BudgetRuleConfig {
   warningThresholdPercent: number; // e.g. 80%
   criticalThresholdPercent: number; // e.g. 100%
   requireExecutiveOverrideWhenExceeded: boolean;
-  maxGiftDiscountAllowedPercent: number;
+  maxRequestDiscountAllowedPercent: number;
 }
 
 export interface EmailTemplateConfig {

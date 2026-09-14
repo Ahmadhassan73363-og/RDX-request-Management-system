@@ -21,7 +21,7 @@ import {
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { dataService } from '../../services/dataService';
-import { GiftRequest, ShipmentStatus } from '../../types/request';
+import { RequestRecord, ShipmentStatus } from '../../types/request';
 import { Card, CardHeader, CardTitle, CardContent } from '../../components/common/Card';
 import { Button } from '../../components/common/Button';
 import { Modal } from '../../components/common/Modal';
@@ -86,7 +86,7 @@ export const ShipmentTrackingPage: React.FC<ShipmentTrackingPageProps> = ({ onNa
   const [refreshTick, setRefreshTick] = useState(0);
 
   // Status update modal state
-  const [updatingRequest, setUpdatingRequest] = useState<GiftRequest | null>(null);
+  const [updatingRequest, setUpdatingRequest] = useState<RequestRecord | null>(null);
   const [targetStatus, setTargetStatus] = useState<ShipmentStatus>('in_process');
   const [trackingNote, setTrackingNote] = useState('');
   const [actionError, setActionError] = useState('');
@@ -120,7 +120,7 @@ export const ShipmentTrackingPage: React.FC<ShipmentTrackingPageProps> = ({ onNa
         const matchTracking = r.trackingNumber.toLowerCase().includes(q);
         const matchCustomer = (r.customerName || '').toLowerCase().includes(q);
         const matchCompany = (r.customerCompany || '').toLowerCase().includes(q);
-        const matchItem = (r.giftItem || '').toLowerCase().includes(q);
+        const matchItem = (r.requestItem || '').toLowerCase().includes(q);
         if (!matchTracking && !matchCustomer && !matchCompany && !matchItem) return false;
       }
 
@@ -160,7 +160,7 @@ export const ShipmentTrackingPage: React.FC<ShipmentTrackingPageProps> = ({ onNa
     return Object.values(statusCounts).reduce((a, b) => a + b, 0);
   }, [statusCounts]);
 
-  const handleOpenUpdateModal = (req: GiftRequest, nextStatus?: ShipmentStatus) => {
+  const handleOpenUpdateModal = (req: RequestRecord, nextStatus?: ShipmentStatus) => {
     if (!isShipmentManager) return;
     setUpdatingRequest(req);
     const currentStatus = (req.shipmentStatus || 'approved') as ShipmentStatus;
@@ -286,7 +286,7 @@ export const ShipmentTrackingPage: React.FC<ShipmentTrackingPageProps> = ({ onNa
           <div className="text-2xl font-bold font-mono text-foreground mt-1">
             {totalEligible}
           </div>
-          <p className="text-[11px] text-muted-foreground mt-0.5">Approved gift packages</p>
+          <p className="text-[11px] text-muted-foreground mt-0.5">Approved request packages</p>
         </Card>
 
         {SHIPMENT_STATUSES.map(st => {
@@ -430,10 +430,10 @@ export const ShipmentTrackingPage: React.FC<ShipmentTrackingPageProps> = ({ onNa
                           </div>
 
                           <div className="p-2 rounded-lg bg-muted/40 border border-border/60 text-[11px] space-y-1">
-                            <p className="text-foreground font-medium truncate">{req.giftItem}</p>
+                            <p className="text-foreground font-medium truncate">{req.requestItem}</p>
                             <div className="flex items-center justify-between text-[10px] text-muted-foreground">
                               <span>Team: {req.teamName}</span>
-                              <span>{req.giftCategory}</span>
+                              <span>{req.requestCategory}</span>
                             </div>
                           </div>
 
@@ -522,7 +522,7 @@ export const ShipmentTrackingPage: React.FC<ShipmentTrackingPageProps> = ({ onNa
                             {req.teamName}
                           </td>
                           <td className="p-3 text-foreground/90 max-w-[200px] truncate">
-                            {req.giftItem}
+                            {req.requestItem}
                           </td>
                           <td className="p-3 font-mono font-bold text-foreground">
                             ${(req.budgetAmount || 0).toLocaleString()}
@@ -586,7 +586,7 @@ export const ShipmentTrackingPage: React.FC<ShipmentTrackingPageProps> = ({ onNa
               </div>
               <div className="flex items-center justify-between">
                 <span className="text-muted-foreground">Item Description:</span>
-                <span className="font-semibold text-foreground">{updatingRequest.giftItem}</span>
+                <span className="font-semibold text-foreground">{updatingRequest.requestItem}</span>
               </div>
               <div className="flex items-center justify-between">
                 <span className="text-muted-foreground">Current Shipment Status:</span>

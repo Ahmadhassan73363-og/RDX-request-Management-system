@@ -14,7 +14,7 @@ import {
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { dataService } from '../../services/dataService';
-import { GiftRequest } from '../../types/request';
+import { RequestRecord } from '../../types/request';
 import { Card, CardHeader, CardTitle, CardContent } from '../../components/common/Card';
 import { Button } from '../../components/common/Button';
 import { StatusBadge, PriorityBadge } from '../../components/common/Badge';
@@ -31,7 +31,7 @@ export const ApprovalsQueuePage: React.FC<ApprovalsQueuePageProps> = ({ onNaviga
   const [activeStageFilter, setActiveStageFilter] = useState<'ALL' | 'EXECUTIVE' | 'MANAGER' | 'HOD' | 'PRESIDENT'>('ALL');
 
   // Modal action state
-  const [selectedRequest, setSelectedRequest] = useState<GiftRequest | null>(null);
+  const [selectedRequest, setSelectedRequest] = useState<RequestRecord | null>(null);
   const [actionType, setActionType] = useState<'approve' | 'reject' | 'request_changes' | 'override_approve'>('approve');
   const [actionComments, setActionComments] = useState('');
   const [signatureData, setSignatureData] = useState('');
@@ -54,7 +54,7 @@ export const ApprovalsQueuePage: React.FC<ApprovalsQueuePageProps> = ({ onNaviga
     return true;
   });
 
-  const handleOpenActionModal = (req: GiftRequest, type: 'approve' | 'reject' | 'request_changes' | 'override_approve') => {
+  const handleOpenActionModal = (req: RequestRecord, type: 'approve' | 'reject' | 'request_changes' | 'override_approve') => {
     setSelectedRequest(req);
     setActionType(type);
     setActionComments('');
@@ -206,7 +206,7 @@ export const ApprovalsQueuePage: React.FC<ApprovalsQueuePageProps> = ({ onNaviga
                   <div className="space-y-1">
                     <p className="text-sm font-bold text-foreground">{req.customerCompany}</p>
                     <p className="text-muted-foreground">Recipient: <strong className="text-foreground">{req.customerName}</strong></p>
-                    <p className="text-muted-foreground truncate">Item: <strong>{req.giftItem}</strong></p>
+                    <p className="text-muted-foreground truncate">Item: <strong>{req.requestItem}</strong></p>
                     <p className="text-[11px] text-muted-foreground font-mono">Team: {req.teamName}</p>
                   </div>
 
@@ -214,7 +214,7 @@ export const ApprovalsQueuePage: React.FC<ApprovalsQueuePageProps> = ({ onNaviga
                   <div className="p-3 rounded-xl bg-muted/40 border border-border/80 space-y-1.5 font-mono">
                     <div className="flex items-center justify-between">
                       <span className="text-muted-foreground">Retail Value:</span>
-                      <span className="font-semibold text-foreground">${req.giftValue.toLocaleString()}</span>
+                      <span className="font-semibold text-foreground">${req.requestValue.toLocaleString()}</span>
                     </div>
                     <div className="flex items-center justify-between pt-1 border-t border-border/60 font-bold">
                       <span className="text-primary">Budget Deduct:</span>

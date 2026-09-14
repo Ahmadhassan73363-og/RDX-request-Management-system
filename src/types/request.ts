@@ -46,15 +46,15 @@ export interface RequestComment {
   createdAt: string;
 }
 
-export interface GiftRequest {
+export interface RequestRecord {
   id: string;
   trackingNumber: string; // e.g. REQ-2026-0042
   customerName: string;
   customerCompany: string;
-  giftCategory: string;
-  giftItem: string;
+  requestCategory: string;
+  requestItem: string;
   discountPercentage: number; // e.g. 25 for 25% discount
-  giftValue: number; // original value e.g. $1,000
+  requestValue: number; // original value e.g. $1,000
   budgetAmount: number; // calculated cost e.g. $750 after discount or direct cost
   teamId: string;
   teamName: string;
@@ -108,4 +108,4 @@ export interface GiftRequest {
   updatedAt: string;
 }
 
-export type AppRequest = GiftRequest;
+export type AppRequest = RequestRecord;

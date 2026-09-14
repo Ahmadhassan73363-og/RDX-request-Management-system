@@ -1,5 +1,5 @@
--- RDX Gift Management System PostgreSQL Schema
--- Database: rdx_gift_db
+-- RDX Request Management System PostgreSQL Schema
+-- Database: rdx_request_db
 
 DROP TABLE IF EXISTS audit_logs CASCADE;
 DROP TABLE IF EXISTS notifications CASCADE;
@@ -62,10 +62,10 @@ CREATE TABLE requests (
   tracking_number VARCHAR(50) UNIQUE NOT NULL,
   customer_name VARCHAR(150) NOT NULL,
   customer_company VARCHAR(150),
-  gift_category VARCHAR(100),
-  gift_item VARCHAR(255),
+  request_category VARCHAR(100),
+  request_item VARCHAR(255),
   discount_percentage NUMERIC(5, 2) DEFAULT 0,
-  gift_value NUMERIC(15, 2) NOT NULL DEFAULT 0,
+  request_value NUMERIC(15, 2) NOT NULL DEFAULT 0,
   budget_amount NUMERIC(15, 2) NOT NULL DEFAULT 0,
   team_id VARCHAR(50) REFERENCES teams(id) ON DELETE SET NULL,
   team_name VARCHAR(100),

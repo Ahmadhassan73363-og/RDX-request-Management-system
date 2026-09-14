@@ -66,7 +66,7 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onNavigate, onOpen
   // Category spending breakdown
   const categoryMap: Record<string, number> = {};
   requests.forEach(r => {
-    categoryMap[r.giftCategory] = (categoryMap[r.giftCategory] || 0) + (r.budgetAmount || 0);
+    categoryMap[r.requestCategory] = (categoryMap[r.requestCategory] || 0) + (r.budgetAmount || 0);
   });
   const categoryStats = Object.entries(categoryMap).map(([category, amount]) => ({
     category,
@@ -322,7 +322,7 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onNavigate, onOpen
                     <th className="py-2.5 px-3 pl-3 text-primary font-bold">Date</th>
                     <th className="py-2.5 px-3">Agent Name</th>
                     <th className="py-2.5 px-3">Business Name</th>
-                    <th className="py-2.5 px-3">Category (Sample/Gift)</th>
+                    <th className="py-2.5 px-3">Category (Sample/Request)</th>
                     <th className="py-2.5 px-3">Invoice No</th>
                     <th className="py-2.5 px-3">Sample SKU</th>
                     <th className="py-2.5 px-3 text-center">Total Qty</th>
@@ -336,9 +336,9 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onNavigate, onOpen
                     const reqDate = req.date || req.requestDate || (req.createdAt ? req.createdAt.split('T')[0] : '—');
                     const agentName = req.agentOrTeamName || req.customerName || req.submittedByUserName;
                     const business = req.businessName || req.customerCompany;
-                    const category = req.typeOfFoc || req.giftCategory || 'Sample/Gift';
+                    const category = req.typeOfFoc || req.requestCategory || 'Sample/Request';
                     const invoiceNo = req.systemInvoiceNo || '—';
-                    const sampleSku = req.sampleSku || req.giftItem || '—';
+                    const sampleSku = req.sampleSku || req.requestItem || '—';
                     const qty = req.sampleSkuQty || 1;
                     const unitCost = Number(req.sampleSkuCostPerUnit) || (req.budgetAmount ? Math.round((req.budgetAmount / qty) * 100) / 100 : 0);
                     const totalCost = Number(req.sampleSkuTotal) || req.budgetAmount || 0;

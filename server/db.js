@@ -26,7 +26,7 @@ export const pool = process.env.DATABASE_URL
       port: parseInt(process.env.PGPORT || '5432', 10),
       user: process.env.PGUSER || 'postgres',
       password: process.env.PGPASSWORD || 'root',
-      database: process.env.PGDATABASE || 'rdx_gift_db',
+      database: process.env.PGDATABASE || 'rdx_request_db',
       ssl: isSsl ? { rejectUnauthorized: false } : undefined,
       max: 20,
       idleTimeoutMillis: 30000,

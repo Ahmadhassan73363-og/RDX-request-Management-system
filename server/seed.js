@@ -19,7 +19,7 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 async function seed() {
-  console.log('🚀 Connecting to PostgreSQL and initializing schema in rdx_gift_db...');
+  console.log('🚀 Connecting to PostgreSQL and initializing schema in rdx_request_db...');
   const client = await pool.connect();
 
   try {
@@ -160,8 +160,8 @@ async function seed() {
     for (const req of INITIAL_REQUESTS) {
       await client.query(
         `INSERT INTO requests (
-           id, tracking_number, customer_name, customer_company, gift_category,
-           gift_item, discount_percentage, gift_value, budget_amount, team_id,
+           id, tracking_number, customer_name, customer_company, request_category,
+           request_item, discount_percentage, request_value, budget_amount, team_id,
            team_name, reason, request_date, delivery_target_date, priority,
            status, current_approval_step_index, total_approval_steps, current_approver_role,
            team_remaining_budget_at_request, budget_after_approval, approved_amount,
@@ -177,10 +177,10 @@ async function seed() {
           req.trackingNumber,
           req.customerName,
           req.customerCompany || '',
-          req.giftCategory || '',
-          req.giftItem || '',
+          req.requestCategory || '',
+          req.requestItem || '',
           req.discountPercentage || 0,
-          req.giftValue || 0,
+          req.requestValue || 0,
           req.budgetAmount || 0,
           req.teamId,
           req.teamName || '',
@@ -287,7 +287,7 @@ async function seed() {
       branding: {
         ...INITIAL_SETTINGS.branding,
         companyName: 'RDX',
-        appTitle: 'Gift & Budget Management System',
+        appTitle: 'Request & Budget Management System',
         logoUrl: '/rdx-logo.png'
       }
     };
@@ -299,7 +299,7 @@ async function seed() {
     );
 
     await client.query('COMMIT');
-    console.log('🎉 PostgreSQL database rdx_gift_db seeded successfully with all tables and records!');
+    console.log('🎉 PostgreSQL database rdx_request_db seeded successfully with all tables and records!');
   } catch (err) {
     await client.query('ROLLBACK');
     console.error('❌ Error during seeding:', err);
