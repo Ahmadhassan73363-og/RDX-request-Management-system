@@ -183,31 +183,8 @@ export const Header: React.FC<HeaderProps> = ({ onOpenCommandPalette, onToggleSi
           )}
         </div>
 
-        {/* Persona / Role Switcher - Essential for instant multi-role testing! */}
-        <div className="relative">
-          <button
-            onClick={() => {
-              setShowUserMenu(!showUserMenu);
-              setShowNotifMenu(false);
-            }}
-            className="flex items-center gap-2 pl-2 pr-2.5 py-1.5 rounded-xl hover:bg-muted/60 border border-border/60 transition-all text-left"
-          >
-            <img
-              src={currentUser.avatar || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=100'}
-              alt={currentUser.name}
-              className="w-7 h-7 rounded-lg object-cover ring-1 ring-border"
-            />
-            <div className="hidden sm:block text-xs">
-              <div className="font-semibold text-foreground leading-tight flex items-center gap-1">
-                <span>{currentUser.name}</span>
-              </div>
-              <div className="text-[10px] text-primary font-medium flex items-center gap-0.5">
-                <Shield className="w-2.5 h-2.5" />
-                <span>{currentUser.roleName}</span>
-              </div>
-            </div>
-            <ChevronDown className="w-3.5 h-3.5 text-muted-foreground ml-0.5" />
-          </button>
+    
+        
 
           {showUserMenu && (
             <div className="absolute right-0 mt-2 w-[calc(100vw-1.5rem)] sm:w-72 max-w-xs rounded-2xl bg-card border border-border shadow-xl z-50 overflow-hidden animate-fade-in">
@@ -276,7 +253,7 @@ export const Header: React.FC<HeaderProps> = ({ onOpenCommandPalette, onToggleSi
               </div>
             </div>
           )}
-        </div>
+      
 
         {/* Header Direct Log Out Button */}
         <button
