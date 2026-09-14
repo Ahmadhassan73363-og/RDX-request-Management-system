@@ -1,8 +1,9 @@
-import React, { createContext, useContext, useState } from 'react';
+import React, { createContext, useContext } from 'react';
 import { SystemSettings, StatusConfigItem } from '../types/settings';
 import { dataService } from '../services/dataService';
 import { useAuth } from './AuthContext';
 import { RequestStatus } from '../types/request';
+import { useSyncedState } from '../hooks/useSyncedState';
 
 interface SystemContextType {
   settings: SystemSettings;
@@ -14,7 +15,7 @@ const SystemContext = createContext<SystemContextType | undefined>(undefined);
 
 export const SystemProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const { currentUser } = useAuth();
-  const [settings, setSettingsState] = useState<SystemSettings>(() => dataService.getSettings());
+  const [settings, setSettingsState] = useSyncedState<SystemSettings>(() => dataService.getSettings());
 
   const updateSettings = (newSettings: Partial<SystemSettings>) => {
     const updated = dataService.updateSettings(newSettings, currentUser);

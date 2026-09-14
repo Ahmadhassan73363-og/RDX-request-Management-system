@@ -2,6 +2,7 @@ import React, { createContext, useContext, useState, useEffect } from 'react';
 import { User } from '../types/user';
 import { Permission, Role } from '../types/rbac';
 import { dataService } from '../services/dataService';
+import { useSyncedState } from '../hooks/useSyncedState';
 
 const SESSION_KEY = 'rdx_authenticated_user_id';
 
@@ -21,8 +22,8 @@ interface AuthContextType {
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const [users, setUsers] = useState<User[]>(() => dataService.getUsers());
-  const [roles, setRoles] = useState<Role[]>(() => dataService.getRoles());
+  const [users, setUsers] = useSyncedState<User[]>(() => dataService.getUsers());
+  const [roles, setRoles] = useSyncedState<Role[]>(() => dataService.getRoles());
 
   // Restore session from localStorage if present
   const [isAuthenticated, setIsAuthenticated] = useState<boolean>(() => {
@@ -38,7 +39,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     return false;
   });
 
-  const [currentUser, setCurrentUserState] = useState<User>(() => dataService.getCurrentUser());
+  const [currentUser, setCurrentUserState] = useSyncedState<User>(() => dataService.getCurrentUser());
 
   const refreshUserData = () => {
     const updatedUsers = dataService.getUsers();

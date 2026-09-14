@@ -6,6 +6,7 @@ import { FormSchema } from '../../types/form';
 import { Card, CardHeader, CardTitle, CardContent } from '../../components/common/Card';
 import { Button } from '../../components/common/Button';
 import { FormBuilderPage } from './FormBuilderPage';
+import { useSyncedState } from '../../hooks/useSyncedState';
 
 interface FormsListPageProps {
   onNavigateToAssignments: () => void;
@@ -13,7 +14,7 @@ interface FormsListPageProps {
 
 export const FormsListPage: React.FC<FormsListPageProps> = ({ onNavigateToAssignments }) => {
   const { currentUser, hasPermission } = useAuth();
-  const [forms, setForms] = useState<FormSchema[]>(() => dataService.getForms());
+  const [forms, setForms] = useSyncedState<FormSchema[]>(() => dataService.getForms());
   const [editingFormId, setEditingFormId] = useState<string | null>(null);
   const [isCreating, setIsCreating] = useState(false);
 

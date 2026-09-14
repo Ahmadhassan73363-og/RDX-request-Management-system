@@ -8,12 +8,13 @@ import { Button } from '../../components/common/Button';
 import { Modal } from '../../components/common/Modal';
 import { Select } from '../../components/common/Select';
 import { Input } from '../../components/common/Input';
+import { useSyncedState } from '../../hooks/useSyncedState';
 
 export const FormAssignmentPage: React.FC = () => {
   const { currentUser, users } = useAuth();
   const forms = dataService.getForms();
   const teams = dataService.getTeams();
-  const [assignments, setAssignments] = useState<FormAssignment[]>(() => dataService.getFormAssignments());
+  const [assignments, setAssignments] = useSyncedState<FormAssignment[]>(() => dataService.getFormAssignments());
 
   // Modal state
   const [isModalOpen, setIsModalOpen] = useState(false);

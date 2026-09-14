@@ -8,6 +8,7 @@ import { Button } from '../../components/common/Button';
 import { Modal } from '../../components/common/Modal';
 import { Input } from '../../components/common/Input';
 import { Select } from '../../components/common/Select';
+import { useSyncedState } from '../../hooks/useSyncedState';
 
 interface TeamsListPageProps {
   onNavigateToTeam?: (teamId: string) => void;
@@ -16,7 +17,7 @@ interface TeamsListPageProps {
 
 export const TeamsListPage: React.FC<TeamsListPageProps> = ({ onNavigateToBudgets }) => {
   const { currentUser, hasPermission, users } = useAuth();
-  const [teams, setTeams] = useState<Team[]>(() => dataService.getTeams());
+  const [teams, setTeams] = useSyncedState<Team[]>(() => dataService.getTeams());
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingTeam, setEditingTeam] = useState<Team | null>(null);
   const [teamToDelete, setTeamToDelete] = useState<Team | null>(null);
