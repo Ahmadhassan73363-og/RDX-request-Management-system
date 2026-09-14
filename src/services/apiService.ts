@@ -30,9 +30,13 @@ export const api = {
   async getBootstrap() {
     try {
       const res = await fetch('/api/bootstrap');
-      if (!res.ok) return null;
+      if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
       return await res.json();
-    } catch {
+    } catch (e) {
+      console.error('Bootstrap fetch failed — falling back to local/demo data. Check the server DB connection (env vars).', e);
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent<ApiSyncErrorDetail>('api-bootstrap-error', { detail: { label: 'bootstrap', error: e } }));
+      }
       return null;
     }
   },

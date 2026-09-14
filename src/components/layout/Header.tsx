@@ -38,14 +38,20 @@ export const Header: React.FC<HeaderProps> = ({ onOpenCommandPalette, onToggleSi
   // dataService) so a broken connection isn't silent — see apiService.ts.
   const [syncErrorCount, setSyncErrorCount] = useState(0);
   const [lastSyncError, setLastSyncError] = useState<string>('');
+  const [bootstrapFailed, setBootstrapFailed] = useState(false);
   useEffect(() => {
     const handler = (e: Event) => {
       const detail = (e as CustomEvent<ApiSyncErrorDetail>).detail;
       setSyncErrorCount(c => c + 1);
       setLastSyncError(detail?.label || 'unknown action');
     };
+    const bootstrapHandler = () => setBootstrapFailed(true);
     window.addEventListener('api-sync-error', handler);
-    return () => window.removeEventListener('api-sync-error', handler);
+    window.addEventListener('api-bootstrap-error', bootstrapHandler);
+    return () => {
+      window.removeEventListener('api-sync-error', handler);
+      window.removeEventListener('api-bootstrap-error', bootstrapHandler);
+    };
   }, []);
 
   return (
@@ -93,6 +99,17 @@ export const Header: React.FC<HeaderProps> = ({ onOpenCommandPalette, onToggleSi
 
       {/* Right controls: Theme, Notifications, Persona Switcher, Profile */}
       <div className="flex items-center gap-2 sm:gap-3">
+        {/* Database unreachable — the app is showing local/demo data, not live data */}
+        {bootstrapFailed && (
+          <span
+            title="Could not reach the PostgreSQL database on load. You're viewing local/demo data — nothing here reflects the live database, and changes may not be shared with other users."
+            className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-destructive/10 text-destructive text-xs font-semibold border border-destructive/30"
+          >
+            <CloudOff className="w-3.5 h-3.5" />
+            <span className="hidden sm:inline">DB unreachable — demo data</span>
+          </span>
+        )}
+
         {/* Background DB sync failure indicator */}
         {syncErrorCount > 0 && (
           <button
