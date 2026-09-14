@@ -128,6 +128,25 @@ export const INITIAL_ROLES: Role[] = [
     createdAt: '2026-01-01T00:00:00Z'
   },
   {
+    id: 'role-manager',
+    name: 'Manager',
+    description: 'Departmental manager conducting Stage 2 operational reviews and budget checks',
+    isSystem: true,
+    color: '#2563eb',
+    permissions: [
+      'dashboard:view',
+      'users:view',
+      'forms:submit',
+      'approvals:approve',
+      'approvals:reject',
+      'approvals:request_changes',
+      'budgets:view',
+      'shipments:view',
+      'reports:view'
+    ],
+    createdAt: '2026-01-01T00:00:00Z'
+  },
+  {
     id: 'role-hod',
     name: 'HOD',
     description: 'Head of Department conducting Stage 3 departmental sign-offs and budget checks',
