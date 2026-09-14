@@ -18,12 +18,12 @@ export const AuditLogsPage: React.FC = () => {
       if (searchQuery.trim()) {
         const q = searchQuery.toLowerCase();
         return (
-          log.userName.toLowerCase().includes(q) ||
-          log.userEmail.toLowerCase().includes(q) ||
-          log.action.toLowerCase().includes(q) ||
-          log.description.toLowerCase().includes(q) ||
-          log.ipAddress.includes(q) ||
-          log.entityType.toLowerCase().includes(q)
+          (log.userName || '').toLowerCase().includes(q) ||
+          (log.userEmail || '').toLowerCase().includes(q) ||
+          (log.action || '').toLowerCase().includes(q) ||
+          (log.description || '').toLowerCase().includes(q) ||
+          (log.ipAddress || '').includes(q) ||
+          (log.entityType || '').toLowerCase().includes(q)
         );
       }
       return true;

@@ -9,12 +9,13 @@ import {
   INITIAL_NOTIFICATIONS,
   INITIAL_AUDIT_LOGS,
   INITIAL_SETTINGS,
-  INITIAL_BUDGET_TRANSACTIONS
+  INITIAL_BUDGET_TRANSACTIONS,
+  INITIAL_ADDITIONAL_FIELDS
 } from './mockData';
 import { Role, Permission } from '../types/rbac';
 import { User } from '../types/user';
 import { Team } from '../types/team';
-import { RequestRecord, RequestStatus, RequestPriority, SkuItem, ShipmentStatus } from '../types/request';
+import { RequestRecord, RequestStatus, RequestPriority, SkuItem, ShipmentStatus, AdditionalField } from '../types/request';
 import { FormSchema, FormAssignment, FormSubmission } from '../types/form';
 import { BudgetTransaction, BudgetActionType } from '../types/budget';
 import { Notification, NotificationType } from '../types/notification';
@@ -55,6 +56,7 @@ class DataService {
       if (Array.isArray(data.notifications) && data.notifications.length) storage.set('notifications', data.notifications);
       if (Array.isArray(data.auditLogs) && data.auditLogs.length) storage.set('audit_logs', data.auditLogs);
       if (data.settings) storage.set('settings', data.settings);
+      if (Array.isArray(data.additionalFields)) storage.set('additional_fields', data.additionalFields);
       console.log('✨ Synchronized state with local PostgreSQL database (rdx_request_db)');
     } catch (err) {
       console.warn('Database sync skipped (offline or server starting)', err);
@@ -74,6 +76,7 @@ class DataService {
       storage.set('audit_logs', INITIAL_AUDIT_LOGS);
       storage.set('settings', INITIAL_SETTINGS);
       storage.set('budget_transactions', INITIAL_BUDGET_TRANSACTIONS);
+      storage.set('additional_fields', INITIAL_ADDITIONAL_FIELDS);
       storage.set('current_user_id', 'usr-1'); // Alexander Vance (Super Admin)
       storage.set('initialized', true);
     }
@@ -813,6 +816,12 @@ class DataService {
     const team = teams.find(t => t.id === req.teamId);
     if (!team) throw new Error('Team not found');
 
+    // Only the role currently holding the approval stage (or a Super Admin) may act.
+    const isAssignedApprover = actor.roleName === req.currentApproverRole || actor.roleName === 'Super Admin';
+    if (!isAssignedApprover) {
+      throw new Error(`Only ${req.currentApproverRole} (or Super Admin) can act on this request at its current stage.`);
+    }
+
     const settings = this.getSettings();
 
     // Check budget sufficiency
@@ -1270,6 +1279,38 @@ class DataService {
     api.updateSettings(updated).catch(() => {});
     this.logAudit('SETTINGS_UPDATE', 'SystemSettings', 'system', 'Updated enterprise system settings and branding', actor);
     return updated;
+  }
+
+  // --- Additional Fields (user-defined extra columns on the Requests tables) ---
+  public getAdditionalFields(): AdditionalField[] {
+    return [...storage.get<AdditionalField[]>('additional_fields', INITIAL_ADDITIONAL_FIELDS)]
+      .sort((a, b) => a.displayOrder - b.displayOrder);
+  }
+
+  public addAdditionalField(label: string, actor: User): AdditionalField {
+    const fields = this.getAdditionalFields();
+    const key = label.trim().toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '') || `field_${Date.now()}`;
+    const newField: AdditionalField = {
+      id: 'field-' + Date.now(),
+      label: label.trim(),
+      key,
+      displayOrder: fields.length,
+      createdAt: new Date().toISOString()
+    };
+    storage.set('additional_fields', [...fields, newField]);
+    api.saveAdditionalField(newField).catch(() => {});
+    this.logAudit('FIELD_CREATE', 'AdditionalField', newField.id, `Added additional field column "${newField.label}"`, actor);
+    return newField;
+  }
+
+  public deleteAdditionalField(fieldId: string, actor: User): void {
+    const fields = this.getAdditionalFields();
+    const field = fields.find(f => f.id === fieldId);
+    storage.set('additional_fields', fields.filter(f => f.id !== fieldId));
+    api.deleteAdditionalField(fieldId).catch(() => {});
+    if (field) {
+      this.logAudit('FIELD_DELETE', 'AdditionalField', fieldId, `Removed additional field column "${field.label}"`, actor);
+    }
   }
 }
 

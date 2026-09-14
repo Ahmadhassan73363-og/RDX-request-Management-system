@@ -109,3 +109,13 @@ export interface RequestRecord {
 }
 
 export type AppRequest = RequestRecord;
+
+// A user-defined extra column on the Requests table (Dashboard, Requests list, etc.).
+// Values are read from RequestRecord.customFields[key].
+export interface AdditionalField {
+  id: string;
+  label: string;
+  key: string;
+  displayOrder: number;
+  createdAt: string;
+}

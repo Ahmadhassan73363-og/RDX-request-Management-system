@@ -88,6 +88,17 @@ function mapRole(row) {
   };
 }
 
+function mapAdditionalField(row) {
+  if (!row) return null;
+  return {
+    id: row.id,
+    label: row.label,
+    key: row.field_key,
+    displayOrder: row.display_order,
+    createdAt: row.created_at
+  };
+}
+
 function mapRequest(row) {
   if (!row) return null;
   return {
@@ -130,9 +141,11 @@ function mapRequest(row) {
     sampleSkuCostPerUnit: row.sample_sku_cost_per_unit != null ? parseFloat(row.sample_sku_cost_per_unit) : undefined,
     sampleSkuTotal: row.sample_sku_total != null ? parseFloat(row.sample_sku_total) : undefined,
     skuItems: Array.isArray(row.sku_items) ? row.sku_items : (typeof row.sku_items === 'string' ? JSON.parse(row.sku_items) : []),
+    customFields: row.custom_fields || {},
     // 'pending' is the DB column's default for requests that never entered the shipment
     // pipeline — treat it as "no shipment status" instead of a real active state.
     shipmentStatus: (row.shipment_status && row.shipment_status !== 'pending') ? row.shipment_status : undefined,
+    deliveredAt: row.delivered_at || undefined,
     createdAt: row.created_at,
     updatedAt: row.updated_at
   };
@@ -208,7 +221,8 @@ app.get('/api/bootstrap', async (req, res) => {
       txnsRes,
       notifsRes,
       logsRes,
-      settingsRes
+      settingsRes,
+      additionalFieldsRes
     ] = await Promise.all([
       pool.query('SELECT * FROM roles ORDER BY name ASC'),
       pool.query('SELECT * FROM users ORDER BY name ASC'),
@@ -220,7 +234,8 @@ app.get('/api/bootstrap', async (req, res) => {
       pool.query('SELECT * FROM budget_transactions ORDER BY created_at DESC'),
       pool.query('SELECT * FROM notifications ORDER BY created_at DESC LIMIT 50'),
       pool.query('SELECT * FROM audit_logs ORDER BY timestamp DESC LIMIT 200'),
-      pool.query('SELECT data FROM settings WHERE id = $1', ['global'])
+      pool.query('SELECT data FROM settings WHERE id = $1', ['global']),
+      pool.query('SELECT * FROM additional_fields ORDER BY display_order ASC')
     ]);
 
     res.json({
@@ -260,7 +275,8 @@ app.get('/api/bootstrap', async (req, res) => {
         browser: r.browser,
         timestamp: r.timestamp
       })),
-      settings: settingsRes.rows[0]?.data || null
+      settings: settingsRes.rows[0]?.data || null,
+      additionalFields: additionalFieldsRes.rows.map(mapAdditionalField)
     });
   } catch (err) {
     console.error('Error fetching bootstrap data', err);
@@ -515,14 +531,14 @@ app.post('/api/requests', async (req, res) => {
          attachments, comments, approval_history, date, department,
          agent_or_team_name, business_name, type_of_foc, system_invoice_no,
          sample_sku, sample_sku_qty, sample_sku_cost_per_unit, sample_sku_total,
-         sku_items, shipment_status,
+         sku_items, shipment_status, custom_fields, delivered_at,
          created_at, updated_at
        ) VALUES (
          $1, $2, $3, $4, $5, $6, $7, $8, $9, $10,
          $11, $12, $13, $14, $15, $16, $17, $18, $19, $20,
          $21, $22, $23, $24, $25, $26, $27, $28, $29, $30,
          $31, $32, $33, $34, $35, $36, $37, $38, $39, $40,
-         $41, $42
+         $41, $42, $43, $44
        )
        ON CONFLICT (id) DO UPDATE SET
          customer_name = COALESCE(EXCLUDED.customer_name, requests.customer_name),
@@ -541,6 +557,8 @@ app.post('/api/requests', async (req, res) => {
          attachments = COALESCE(EXCLUDED.attachments, requests.attachments),
          sku_items = COALESCE(EXCLUDED.sku_items, requests.sku_items),
          shipment_status = COALESCE(EXCLUDED.shipment_status, requests.shipment_status),
+         custom_fields = COALESCE(EXCLUDED.custom_fields, requests.custom_fields),
+         delivered_at = COALESCE(EXCLUDED.delivered_at, requests.delivered_at),
          updated_at = CURRENT_TIMESTAMP
        RETURNING *`,
       [
@@ -584,6 +602,8 @@ app.post('/api/requests', async (req, res) => {
         reqData.sampleSkuTotal || 0,
         JSON.stringify(reqData.skuItems || []),
         reqData.shipmentStatus || 'pending',
+        JSON.stringify(reqData.customFields || {}),
+        reqData.deliveredAt || null,
         reqData.createdAt || new Date().toISOString(),
         reqData.updatedAt || new Date().toISOString()
       ]
@@ -617,8 +637,10 @@ app.put('/api/requests/:id', async (req, res) => {
          attachments = COALESCE($14, attachments),
          shipment_status = COALESCE($15, shipment_status),
          sku_items = COALESCE($16, sku_items),
+         custom_fields = COALESCE($17, custom_fields),
+         delivered_at = COALESCE($18, delivered_at),
          updated_at = CURRENT_TIMESTAMP
-       WHERE id = $17
+       WHERE id = $19
        RETURNING *`,
       [
         r.customerName,
@@ -637,6 +659,8 @@ app.put('/api/requests/:id', async (req, res) => {
         r.attachments ? JSON.stringify(r.attachments) : null,
         r.shipmentStatus,
         r.skuItems ? JSON.stringify(r.skuItems) : null,
+        r.customFields ? JSON.stringify(r.customFields) : null,
+        r.deliveredAt || null,
         id
       ]
     );
@@ -945,6 +969,52 @@ app.put('/api/settings', async (req, res) => {
       [JSON.stringify(req.body)]
     );
     res.json({ success: true, settings: req.body });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ----------------------------------------------------
+// ADDITIONAL FIELDS (user-defined extra columns on the Requests tables)
+// ----------------------------------------------------
+app.get('/api/additional-fields', async (req, res) => {
+  try {
+    const result = await pool.query('SELECT * FROM additional_fields ORDER BY display_order ASC');
+    res.json(result.rows.map(mapAdditionalField));
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/additional-fields', async (req, res) => {
+  const f = req.body;
+  try {
+    const result = await pool.query(
+      `INSERT INTO additional_fields (id, label, field_key, display_order, created_at)
+       VALUES ($1, $2, $3, $4, $5)
+       ON CONFLICT (id) DO UPDATE SET
+         label = EXCLUDED.label,
+         field_key = EXCLUDED.field_key,
+         display_order = EXCLUDED.display_order
+       RETURNING *`,
+      [
+        f.id || `field-${Date.now()}`,
+        f.label,
+        f.key,
+        f.displayOrder || 0,
+        f.createdAt || new Date().toISOString()
+      ]
+    );
+    res.status(201).json(mapAdditionalField(result.rows[0]));
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.delete('/api/additional-fields/:id', async (req, res) => {
+  try {
+    await pool.query('DELETE FROM additional_fields WHERE id = $1', [req.params.id]);
+    res.json({ success: true });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }

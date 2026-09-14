@@ -35,26 +35,28 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({ isOpen, onClose,
   const requests = dataService.getRequests();
   const teams = dataService.getTeams();
 
-  const filteredRequests = query.trim()
+  const q = query.trim().toLowerCase();
+
+  const filteredRequests = q
     ? requests.filter(r =>
-        r.trackingNumber.toLowerCase().includes(query.toLowerCase()) ||
-        r.customerCompany.toLowerCase().includes(query.toLowerCase()) ||
-        r.customerName.toLowerCase().includes(query.toLowerCase()) ||
-        r.requestItem.toLowerCase().includes(query.toLowerCase())
+        (r.trackingNumber || '').toLowerCase().includes(q) ||
+        (r.customerCompany || '').toLowerCase().includes(q) ||
+        (r.customerName || '').toLowerCase().includes(q) ||
+        (r.requestItem || '').toLowerCase().includes(q)
       ).slice(0, 4)
     : requests.slice(0, 3);
 
-  const filteredTeams = query.trim()
+  const filteredTeams = q
     ? teams.filter(t =>
-        t.name.toLowerCase().includes(query.toLowerCase()) ||
-        t.code.toLowerCase().includes(query.toLowerCase())
+        (t.name || '').toLowerCase().includes(q) ||
+        (t.code || '').toLowerCase().includes(q)
       ).slice(0, 3)
     : teams.slice(0, 3);
 
-  const filteredUsers = query.trim()
+  const filteredUsers = q
     ? users.filter(u =>
-        u.name.toLowerCase().includes(query.toLowerCase()) ||
-        u.roleName.toLowerCase().includes(query.toLowerCase())
+        (u.name || '').toLowerCase().includes(q) ||
+        (u.roleName || '').toLowerCase().includes(q)
       ).slice(0, 3)
     : [];
 
@@ -140,11 +142,11 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({ isOpen, onClose,
                         <span>• {r.customerCompany}</span>
                       </div>
                       <div className="text-[11px] text-muted-foreground truncate max-w-sm">
-                        {r.requestItem} (${r.budgetAmount.toLocaleString()})
+                        {r.requestItem || '—'} (${(r.budgetAmount || 0).toLocaleString()})
                       </div>
                     </div>
                     <span className="text-[10px] font-mono uppercase bg-muted px-2 py-0.5 rounded text-muted-foreground">
-                      {r.status.replace(/_/g, ' ')}
+                      {(r.status || '').replace(/_/g, ' ')}
                     </span>
                   </button>
                 ))}
@@ -170,7 +172,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({ isOpen, onClose,
                       <div>
                         <div className="font-medium text-foreground">{t.name}</div>
                         <div className="text-[10px] text-muted-foreground">
-                          Budget: ${t.remainingBudget.toLocaleString()} left
+                          Budget: ${(t.remainingBudget || 0).toLocaleString()} left
                         </div>
                       </div>
                     </div>

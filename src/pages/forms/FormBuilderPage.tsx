@@ -224,7 +224,7 @@ export const FormBuilderPage: React.FC<FormBuilderPageProps> = ({ formId, onBack
       </div>
 
       {activeTab === 'editor' ? (
-        <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
           {/* Left: Palette of 16 supported field types */}
           <div className="space-y-4">
             <Card>

@@ -23,7 +23,9 @@ export type AuditActionType =
   | 'REQUEST_CHANGE_REQUESTED'
   | 'REQUEST_CANCEL'
   | 'SHIPMENT_STATUS_UPDATE'
-  | 'SETTINGS_UPDATE';
+  | 'SETTINGS_UPDATE'
+  | 'FIELD_CREATE'
+  | 'FIELD_DELETE';
 
 export interface AuditLog {
   id: string;
@@ -32,7 +34,7 @@ export interface AuditLog {
   userEmail: string;
   userRole: string;
   action: AuditActionType;
-  entityType: 'User' | 'Role' | 'Team' | 'Budget' | 'Form' | 'RequestRecord' | 'SystemSettings';
+  entityType: 'User' | 'Role' | 'Team' | 'Budget' | 'Form' | 'RequestRecord' | 'SystemSettings' | 'AdditionalField';
   entityId: string;
   description: string;
   oldValue?: string; // JSON or descriptive string

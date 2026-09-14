@@ -172,6 +172,7 @@ export const ApprovalsQueuePage: React.FC<ApprovalsQueuePageProps> = ({ onNaviga
             const remaining = team ? team.remainingBudget : 0;
             const hasSufficient = remaining >= req.budgetAmount;
             const canOverride = hasPermission('budgets:override');
+            const isAssignedApprover = currentUser.roleName === req.currentApproverRole || currentUser.roleName === 'Super Admin';
 
             return (
               <Card key={req.id} hoverEffect className="relative overflow-hidden p-5 space-y-4">
@@ -241,51 +242,58 @@ export const ApprovalsQueuePage: React.FC<ApprovalsQueuePageProps> = ({ onNaviga
                       </div>
                     )}
 
-                    <div className="flex items-center justify-end gap-2 pt-1">
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => handleOpenActionModal(req, 'request_changes')}
-                        className="text-xs h-8"
-                      >
-                        Changes
-                      </Button>
-                      <Button
-                        variant="destructive"
-                        size="sm"
-                        onClick={() => handleOpenActionModal(req, 'reject')}
-                        className="text-xs h-8"
-                      >
-                        Reject
-                      </Button>
+                    {!isAssignedApprover ? (
+                      <div className="flex items-center justify-end gap-1.5 pt-1 text-[11px] text-muted-foreground">
+                        <ShieldCheck className="w-3.5 h-3.5 shrink-0" />
+                        <span>Awaiting <strong className="text-foreground">{req.currentApproverRole}</strong> — not actionable by your role</span>
+                      </div>
+                    ) : (
+                      <div className="flex items-center justify-end gap-2 pt-1">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => handleOpenActionModal(req, 'request_changes')}
+                          className="text-xs h-8"
+                        >
+                          Changes
+                        </Button>
+                        <Button
+                          variant="destructive"
+                          size="sm"
+                          onClick={() => handleOpenActionModal(req, 'reject')}
+                          className="text-xs h-8"
+                        >
+                          Reject
+                        </Button>
 
-                      {!hasSufficient ? (
-                        canOverride ? (
+                        {!hasSufficient ? (
+                          canOverride ? (
+                            <Button
+                              variant="primary"
+                              size="sm"
+                              onClick={() => handleOpenActionModal(req, 'override_approve')}
+                              className="bg-amber-600 hover:bg-amber-700 text-xs h-8"
+                            >
+                              Override & Sign
+                            </Button>
+                          ) : (
+                            <Button variant="primary" size="sm" disabled className="text-xs h-8">
+                              Blocked
+                            </Button>
+                          )
+                        ) : (
                           <Button
                             variant="primary"
                             size="sm"
-                            onClick={() => handleOpenActionModal(req, 'override_approve')}
-                            className="bg-amber-600 hover:bg-amber-700 text-xs h-8"
+                            onClick={() => handleOpenActionModal(req, 'approve')}
+                            leftIcon={<CheckCircle2 className="w-3.5 h-3.5" />}
+                            className="text-xs h-8"
                           >
-                            Override & Sign
+                            Sign & Approve
                           </Button>
-                        ) : (
-                          <Button variant="primary" size="sm" disabled className="text-xs h-8">
-                            Blocked
-                          </Button>
-                        )
-                      ) : (
-                        <Button
-                          variant="primary"
-                          size="sm"
-                          onClick={() => handleOpenActionModal(req, 'approve')}
-                          leftIcon={<CheckCircle2 className="w-3.5 h-3.5" />}
-                          className="text-xs h-8"
-                        >
-                          Sign & Approve
-                        </Button>
-                      )}
-                    </div>
+                        )}
+                      </div>
+                    )}
                   </div>
                 </div>
               </Card>

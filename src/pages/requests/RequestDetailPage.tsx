@@ -64,7 +64,8 @@ export const RequestDetailPage: React.FC<RequestDetailPageProps> = ({ requestId,
   }
 
   const isPending = ['submitted', 'under_review', 'pending_executive', 'pending_manager', 'pending_hod', 'pending_assistant', 'pending_president', 'appealed'].includes(request.status);
-  const canApprove = hasPermission('approvals:approve');
+  const isAssignedApprover = currentUser.roleName === request.currentApproverRole || currentUser.roleName === 'Super Admin';
+  const canApprove = hasPermission('approvals:approve') && isAssignedApprover;
   const canOverride = hasPermission('budgets:override');
   const isSuperAdmin = currentUser.roleName === 'Super Admin';
   const isShipmentManager = currentUser.roleName === 'Shipment Manager' || hasPermission('shipments:manage');
@@ -232,6 +233,13 @@ export const RequestDetailPage: React.FC<RequestDetailPageProps> = ({ requestId,
                 </Button>
               )}
             </>
+          )}
+
+          {isPending && hasPermission('approvals:approve') && !isAssignedApprover && (
+            <span className="text-xs text-muted-foreground flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-muted/50 border border-border/60">
+              <ShieldCheck className="w-3.5 h-3.5" />
+              Awaiting <strong className="text-foreground">{request.currentApproverRole}</strong> — not actionable by your role
+            </span>
           )}
 
           {/* Appeal button for rejected requests */}

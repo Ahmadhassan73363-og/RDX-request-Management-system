@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   Sun,
   Moon,
@@ -10,8 +10,10 @@ import {
   LogOut,
   Mail,
   ExternalLink,
-  Menu
+  Menu,
+  CloudOff
 } from 'lucide-react';
+import type { ApiSyncErrorDetail } from '../../services/apiService';
 import { useAuth } from '../../context/AuthContext';
 import { useTheme } from '../../context/ThemeContext';
 import { useNotifications } from '../../context/NotificationContext';
@@ -31,6 +33,20 @@ export const Header: React.FC<HeaderProps> = ({ onOpenCommandPalette, onToggleSi
 
   const [showUserMenu, setShowUserMenu] = useState(false);
   const [showNotifMenu, setShowNotifMenu] = useState(false);
+
+  // Surfaces background PostgreSQL sync failures (fire-and-forget writes from
+  // dataService) so a broken connection isn't silent — see apiService.ts.
+  const [syncErrorCount, setSyncErrorCount] = useState(0);
+  const [lastSyncError, setLastSyncError] = useState<string>('');
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const detail = (e as CustomEvent<ApiSyncErrorDetail>).detail;
+      setSyncErrorCount(c => c + 1);
+      setLastSyncError(detail?.label || 'unknown action');
+    };
+    window.addEventListener('api-sync-error', handler);
+    return () => window.removeEventListener('api-sync-error', handler);
+  }, []);
 
   return (
     <header className="sticky top-0 z-30 flex items-center justify-between h-16 px-3 sm:px-6 bg-card/85 backdrop-blur-md border-b border-border/80 transition-colors shrink-0">
@@ -77,6 +93,20 @@ export const Header: React.FC<HeaderProps> = ({ onOpenCommandPalette, onToggleSi
 
       {/* Right controls: Theme, Notifications, Persona Switcher, Profile */}
       <div className="flex items-center gap-2 sm:gap-3">
+        {/* Background DB sync failure indicator */}
+        {syncErrorCount > 0 && (
+          <button
+            type="button"
+            onClick={() => setSyncErrorCount(0)}
+            title={`${syncErrorCount} background save${syncErrorCount > 1 ? 's' : ''} failed to sync (last: ${lastSyncError}). Your changes are kept locally — click to dismiss.`}
+            className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-amber-500/10 hover:bg-amber-500/20 text-amber-600 dark:text-amber-400 text-xs font-semibold border border-amber-500/30 transition-colors"
+          >
+            <CloudOff className="w-3.5 h-3.5" />
+            <span className="hidden sm:inline">Sync issue</span>
+            <span>({syncErrorCount})</span>
+          </button>
+        )}
+
         {/* Mobile Search Icon */}
         <button
           onClick={onOpenCommandPalette}

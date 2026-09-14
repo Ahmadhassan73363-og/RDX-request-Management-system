@@ -1,4 +1,31 @@
 // Client API adapter to sync state with the PostgreSQL Express backend
+export interface ApiSyncErrorDetail {
+  label: string;
+  error: unknown;
+}
+
+// Every write goes through this helper so a failed sync is never silently
+// swallowed — it's surfaced as a window event the UI can listen for
+// (see Header.tsx), instead of only a console.warn no one will see.
+async function request(label: string, url: string, options?: RequestInit): Promise<boolean> {
+  try {
+    const res = await fetch(url, options);
+    if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
+    return true;
+  } catch (e) {
+    console.warn(`API sync failed for ${label}`, e);
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent<ApiSyncErrorDetail>('api-sync-error', { detail: { label, error: e } }));
+    }
+    return false;
+  }
+}
+
+const jsonBody = (body: any): RequestInit => ({
+  headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify(body)
+});
+
 export const api = {
   async getBootstrap() {
     try {
@@ -10,151 +37,67 @@ export const api = {
     }
   },
 
-  async saveUser(user: any) {
-    try {
-      const method = user.id ? 'PUT' : 'POST';
-      const url = user.id ? `/api/users/${user.id}` : '/api/users';
-      await fetch(url, {
-        method,
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(user)
-      });
-    } catch (e) {
-      console.warn('API sync failed for saveUser', e);
-    }
+  saveUser(user: any) {
+    const method = user.id ? 'PUT' : 'POST';
+    const url = user.id ? `/api/users/${user.id}` : '/api/users';
+    return request('saveUser', url, { method, ...jsonBody(user) });
   },
 
-  async deleteUser(userId: string) {
-    try {
-      await fetch(`/api/users/${userId}`, { method: 'DELETE' });
-    } catch (e) {
-      console.warn('API sync failed for deleteUser', e);
-    }
+  deleteUser(userId: string) {
+    return request('deleteUser', `/api/users/${userId}`, { method: 'DELETE' });
   },
 
-  async saveTeam(team: any) {
-    try {
-      const method = team.id ? 'PUT' : 'POST';
-      const url = team.id ? `/api/teams/${team.id}` : '/api/teams';
-      await fetch(url, {
-        method,
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(team)
-      });
-    } catch (e) {
-      console.warn('API sync failed for saveTeam', e);
-    }
+  saveTeam(team: any) {
+    const method = team.id ? 'PUT' : 'POST';
+    const url = team.id ? `/api/teams/${team.id}` : '/api/teams';
+    return request('saveTeam', url, { method, ...jsonBody(team) });
   },
 
-  async deleteTeam(teamId: string) {
-    try {
-      await fetch(`/api/teams/${teamId}`, { method: 'DELETE' });
-    } catch (e) {
-      console.warn('API sync failed for deleteTeam', e);
-    }
+  deleteTeam(teamId: string) {
+    return request('deleteTeam', `/api/teams/${teamId}`, { method: 'DELETE' });
   },
 
-  async createRequest(req: any) {
-    try {
-      await fetch('/api/requests', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(req)
-      });
-    } catch (e) {
-      console.warn('API sync failed for createRequest', e);
-    }
+  createRequest(req: any) {
+    return request('createRequest', '/api/requests', { method: 'POST', ...jsonBody(req) });
   },
 
-  async updateRequest(id: string, req: any) {
-    try {
-      await fetch(`/api/requests/${id}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(req)
-      });
-    } catch (e) {
-      console.warn('API sync failed for updateRequest', e);
-    }
+  updateRequest(id: string, req: any) {
+    return request('updateRequest', `/api/requests/${id}`, { method: 'PUT', ...jsonBody(req) });
   },
 
-  async deleteRequest(id: string) {
-    try {
-      await fetch(`/api/requests/${id}`, { method: 'DELETE' });
-    } catch (e) {
-      console.warn('API sync failed for deleteRequest', e);
-    }
+  deleteRequest(id: string) {
+    return request('deleteRequest', `/api/requests/${id}`, { method: 'DELETE' });
   },
 
-  async addBudgetTransaction(txn: any) {
-    try {
-      await fetch('/api/budget-transactions', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(txn)
-      });
-    } catch (e) {
-      console.warn('API sync failed for addBudgetTransaction', e);
-    }
+  addBudgetTransaction(txn: any) {
+    return request('addBudgetTransaction', '/api/budget-transactions', { method: 'POST', ...jsonBody(txn) });
   },
 
-  async saveForm(form: any) {
-    try {
-      await fetch('/api/forms', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(form)
-      });
-    } catch (e) {
-      console.warn('API sync failed for saveForm', e);
-    }
+  saveForm(form: any) {
+    return request('saveForm', '/api/forms', { method: 'POST', ...jsonBody(form) });
   },
 
-  async saveFormAssignment(fa: any) {
-    try {
-      await fetch('/api/form-assignments', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(fa)
-      });
-    } catch (e) {
-      console.warn('API sync failed for saveFormAssignment', e);
-    }
+  saveFormAssignment(fa: any) {
+    return request('saveFormAssignment', '/api/form-assignments', { method: 'POST', ...jsonBody(fa) });
   },
 
-  async addAuditLog(log: any) {
-    try {
-      await fetch('/api/audit-logs', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(log)
-      });
-    } catch (e) {
-      console.warn('API sync failed for addAuditLog', e);
-    }
+  addAuditLog(log: any) {
+    return request('addAuditLog', '/api/audit-logs', { method: 'POST', ...jsonBody(log) });
   },
 
-  async addNotification(notif: any) {
-    try {
-      await fetch('/api/notifications', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(notif)
-      });
-    } catch (e) {
-      console.warn('API sync failed for addNotification', e);
-    }
+  addNotification(notif: any) {
+    return request('addNotification', '/api/notifications', { method: 'POST', ...jsonBody(notif) });
   },
 
-  async updateSettings(settings: any) {
-    try {
-      await fetch('/api/settings', {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(settings)
-      });
-    } catch (e) {
-      console.warn('API sync failed for updateSettings', e);
-    }
+  updateSettings(settings: any) {
+    return request('updateSettings', '/api/settings', { method: 'PUT', ...jsonBody(settings) });
+  },
+
+  saveAdditionalField(field: any) {
+    return request('saveAdditionalField', '/api/additional-fields', { method: 'POST', ...jsonBody(field) });
+  },
+
+  deleteAdditionalField(fieldId: string) {
+    return request('deleteAdditionalField', `/api/additional-fields/${fieldId}`, { method: 'DELETE' });
   }
 };

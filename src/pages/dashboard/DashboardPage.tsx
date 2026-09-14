@@ -14,7 +14,8 @@ import {
   Plus,
   ArrowRight,
   Calendar,
-  Layers
+  Layers,
+  X
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { useSystem } from '../../context/SystemContext';
@@ -35,6 +36,25 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onNavigate, onOpen
   const teams = dataService.getTeams();
   const requests = dataService.getRequests();
   const auditLogs = dataService.getAuditLogs().slice(0, 6);
+
+  // Additional (user-defined) columns joined onto the Recent Requests table
+  const [additionalFields, setAdditionalFields] = useState(dataService.getAdditionalFields());
+  const [isAddingField, setIsAddingField] = useState(false);
+  const [newFieldLabel, setNewFieldLabel] = useState('');
+  const canManageColumns = hasPermission('settings:system');
+
+  const handleAddField = () => {
+    if (!newFieldLabel.trim()) return;
+    dataService.addAdditionalField(newFieldLabel, currentUser);
+    setAdditionalFields(dataService.getAdditionalFields());
+    setNewFieldLabel('');
+    setIsAddingField(false);
+  };
+
+  const handleDeleteField = (fieldId: string) => {
+    dataService.deleteAdditionalField(fieldId, currentUser);
+    setAdditionalFields(dataService.getAdditionalFields());
+  };
 
   // Sort requests by Date descending (newest date at start)
   const sortedRequests = [...requests].sort((a, b) => {
@@ -316,19 +336,71 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onNavigate, onOpen
           </CardHeader>
           <CardContent>
             <div className="overflow-x-auto -mx-2 sm:mx-0 px-2 sm:px-0">
-              <table className="w-full text-left border-collapse text-xs min-w-[760px]">
+              <table className="w-full text-left border-collapse text-xs sm:min-w-[760px]">
                 <thead>
                   <tr className="border-b border-border/80 text-[11px] font-semibold text-muted-foreground uppercase tracking-wider bg-muted/20">
                     <th className="py-2.5 px-3 pl-3 text-primary font-bold">Date</th>
-                    <th className="py-2.5 px-3">Agent Name</th>
+                    <th className="py-2.5 px-3 hidden sm:table-cell">Agent Name</th>
                     <th className="py-2.5 px-3">Business Name</th>
                     <th className="py-2.5 px-3">Category (Sample/Request)</th>
-                    <th className="py-2.5 px-3">Invoice No</th>
-                    <th className="py-2.5 px-3">Sample SKU</th>
-                    <th className="py-2.5 px-3 text-center">Total Qty</th>
-                    <th className="py-2.5 px-3 text-right">Per Unit Cost</th>
+                    <th className="py-2.5 px-3 hidden md:table-cell">Invoice No</th>
+                    <th className="py-2.5 px-3 hidden md:table-cell">Sample SKU</th>
+                    <th className="py-2.5 px-3 text-center hidden sm:table-cell">Total Qty</th>
+                    <th className="py-2.5 px-3 text-right hidden sm:table-cell">Per Unit Cost</th>
                     <th className="py-2.5 px-3 text-right">Total Cost</th>
-                    <th className="py-2.5 px-3 text-right pr-3">Status</th>
+                    <th className="py-2.5 px-3 text-right">Status</th>
+                    {additionalFields.map((field) => (
+                      <th key={field.id} className="py-2.5 px-3 whitespace-nowrap">
+                        <span className="inline-flex items-center gap-1.5">
+                          {field.label}
+                          {canManageColumns && (
+                            <button
+                              type="button"
+                              onClick={() => handleDeleteField(field.id)}
+                              title={`Remove "${field.label}" column`}
+                              className="text-muted-foreground hover:text-destructive transition-colors"
+                            >
+                              <X className="w-3 h-3" />
+                            </button>
+                          )}
+                        </span>
+                      </th>
+                    ))}
+                    {canManageColumns && (
+                      <th className="py-2.5 px-3 pr-3 text-right">
+                        {isAddingField ? (
+                          <div className="flex items-center gap-1 justify-end" onClick={(e) => e.stopPropagation()}>
+                            <input
+                              autoFocus
+                              value={newFieldLabel}
+                              onChange={(e) => setNewFieldLabel(e.target.value)}
+                              onKeyDown={(e) => {
+                                if (e.key === 'Enter') handleAddField();
+                                if (e.key === 'Escape') { setIsAddingField(false); setNewFieldLabel(''); }
+                              }}
+                              placeholder="Column name"
+                              className="w-28 px-1.5 py-1 rounded-md border border-border bg-background text-[11px] font-normal normal-case text-foreground"
+                            />
+                            <button
+                              type="button"
+                              onClick={handleAddField}
+                              className="px-1.5 py-1 rounded-md bg-primary text-primary-foreground text-[10px] font-semibold"
+                            >
+                              Add
+                            </button>
+                          </div>
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={() => setIsAddingField(true)}
+                            title="Add a column"
+                            className="inline-flex items-center gap-1 text-muted-foreground hover:text-primary transition-colors normal-case font-normal"
+                          >
+                            <Plus className="w-3.5 h-3.5" /> Column
+                          </button>
+                        )}
+                      </th>
+                    )}
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-border/40">
@@ -352,7 +424,7 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onNavigate, onOpen
                         <td className="py-3 px-3 font-mono font-bold text-primary whitespace-nowrap">
                           {reqDate}
                         </td>
-                        <td className="py-3 px-3 font-medium text-foreground whitespace-nowrap">
+                        <td className="py-3 px-3 font-medium text-foreground whitespace-nowrap hidden sm:table-cell">
                           {agentName}
                         </td>
                         <td className="py-3 px-3 text-foreground whitespace-nowrap">
@@ -363,24 +435,30 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onNavigate, onOpen
                             {category}
                           </span>
                         </td>
-                        <td className="py-3 px-3 font-mono text-muted-foreground whitespace-nowrap">
+                        <td className="py-3 px-3 font-mono text-muted-foreground whitespace-nowrap hidden md:table-cell">
                           {invoiceNo}
                         </td>
-                        <td className="py-3 px-3 text-foreground font-medium truncate max-w-[140px]" title={sampleSku}>
+                        <td className="py-3 px-3 text-foreground font-medium truncate max-w-[140px] hidden md:table-cell" title={sampleSku}>
                           {sampleSku}
                         </td>
-                        <td className="py-3 px-3 text-center font-mono font-semibold">
+                        <td className="py-3 px-3 text-center font-mono font-semibold hidden sm:table-cell">
                           {qty}
                         </td>
-                        <td className="py-3 px-3 text-right font-mono text-muted-foreground whitespace-nowrap">
+                        <td className="py-3 px-3 text-right font-mono text-muted-foreground whitespace-nowrap hidden sm:table-cell">
                           ${unitCost.toFixed(2)}
                         </td>
                         <td className="py-3 px-3 text-right font-mono font-bold text-foreground whitespace-nowrap">
                           ${totalCost.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                         </td>
-                        <td className="py-3 px-3 text-right pr-3 whitespace-nowrap">
+                        <td className="py-3 px-3 text-right whitespace-nowrap">
                           <StatusBadge status={req.status} size="sm" />
                         </td>
+                        {additionalFields.map((field) => (
+                          <td key={field.id} className="py-3 px-3 text-foreground whitespace-nowrap">
+                            {req.customFields?.[field.key] ?? '—'}
+                          </td>
+                        ))}
+                        {canManageColumns && <td className="py-3 px-3 pr-3" />}
                       </tr>
                     );
                   })}

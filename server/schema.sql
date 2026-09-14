@@ -12,6 +12,7 @@ DROP TABLE IF EXISTS users CASCADE;
 DROP TABLE IF EXISTS teams CASCADE;
 DROP TABLE IF EXISTS roles CASCADE;
 DROP TABLE IF EXISTS settings CASCADE;
+DROP TABLE IF EXISTS additional_fields CASCADE;
 
 CREATE TABLE roles (
   id VARCHAR(50) PRIMARY KEY,
@@ -97,7 +98,9 @@ CREATE TABLE requests (
   sample_sku_cost_per_unit NUMERIC(15, 2) DEFAULT 0,
   sample_sku_total NUMERIC(15, 2) DEFAULT 0,
   sku_items JSONB DEFAULT '[]'::jsonb,
+  custom_fields JSONB DEFAULT '{}'::jsonb,
   shipment_status VARCHAR(50) DEFAULT 'pending',
+  delivered_at TIMESTAMP WITH TIME ZONE,
   created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
   updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
@@ -194,4 +197,15 @@ CREATE TABLE settings (
   id VARCHAR(50) PRIMARY KEY DEFAULT 'global',
   data JSONB NOT NULL,
   updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+
+-- User-defined extra columns that join the Requests tables (e.g. the Dashboard's
+-- Recent Requests grid). Values themselves live in requests.custom_fields (JSONB),
+-- keyed by field_key; this table only tracks which columns exist and their order.
+CREATE TABLE additional_fields (
+  id VARCHAR(50) PRIMARY KEY,
+  label VARCHAR(150) NOT NULL,
+  field_key VARCHAR(100) NOT NULL,
+  display_order INT DEFAULT 0,
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );

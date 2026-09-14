@@ -22,6 +22,7 @@ import { KanbanView } from './KanbanView';
 import { CalendarView } from './CalendarView';
 import { NewRequestModal } from './NewRequestModal';
 import { RequestDetailPage } from './RequestDetailPage';
+import { exportToExcel } from '../../utils/exportExcel';
 
 interface RequestsListPageProps {
   initialRequestId?: string;
@@ -56,11 +57,11 @@ export const RequestsListPage: React.FC<RequestsListPageProps> = ({
     if (searchQuery.trim()) {
       const q = searchQuery.toLowerCase();
       list = list.filter(r =>
-        r.trackingNumber.toLowerCase().includes(q) ||
-        r.customerCompany.toLowerCase().includes(q) ||
-        r.customerName.toLowerCase().includes(q) ||
-        r.requestItem.toLowerCase().includes(q) ||
-        r.reason.toLowerCase().includes(q)
+        (r.trackingNumber || '').toLowerCase().includes(q) ||
+        (r.customerCompany || '').toLowerCase().includes(q) ||
+        (r.customerName || '').toLowerCase().includes(q) ||
+        (r.requestItem || '').toLowerCase().includes(q) ||
+        (r.reason || '').toLowerCase().includes(q)
       );
     }
 
@@ -90,30 +91,30 @@ export const RequestsListPage: React.FC<RequestsListPageProps> = ({
     return list;
   }, [allRequests, searchQuery, teamFilter, statusFilter, priorityFilter, sortField, sortOrder, refreshKey]);
 
-  const handleExportCSV = () => {
-    const headers = ['Date', 'Agent Name', 'Business Name', 'Category (Sample/Request)', 'Invoice No', 'Sample SKU', 'Total Quantity', 'Per Unit Cost', 'Total Cost', 'Status', 'Tracking #', 'Priority'];
-    const rows = filteredRequests.map(r => [
-      r.date || r.requestDate,
-      `"${r.agentOrTeamName || r.customerName || r.submittedByUserName}"`,
-      `"${r.businessName || r.customerCompany}"`,
-      `"${r.typeOfFoc || r.requestCategory || 'Sample/Request'}"`,
-      r.systemInvoiceNo || '',
-      `"${r.sampleSku || r.requestItem}"`,
-      r.sampleSkuQty || 1,
-      r.sampleSkuCostPerUnit || (r.budgetAmount ? Math.round((r.budgetAmount / (r.sampleSkuQty || 1)) * 100) / 100 : 0),
-      r.sampleSkuTotal || r.budgetAmount,
-      r.status,
-      r.trackingNumber,
-      r.priority
-    ]);
-    const csvContent = 'data:text/csv;charset=utf-8,' + [headers.join(','), ...rows.map(e => e.join(','))].join('\n');
-    const encodedUri = encodeURI(csvContent);
-    const link = document.createElement('a');
-    link.setAttribute('href', encodedUri);
-    link.setAttribute('download', `requests_${new Date().toISOString().split('T')[0]}.csv`);
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
+  const [isExporting, setIsExporting] = useState(false);
+
+  const handleExportExcel = async () => {
+    setIsExporting(true);
+    try {
+      const headers = ['Date', 'Agent Name', 'Business Name', 'Category (Sample/Request)', 'Invoice No', 'Sample SKU', 'Total Quantity', 'Per Unit Cost', 'Total Cost', 'Status', 'Tracking #', 'Priority'];
+      const rows = filteredRequests.map(r => [
+        r.date || r.requestDate || '',
+        r.agentOrTeamName || r.customerName || r.submittedByUserName || '',
+        r.businessName || r.customerCompany || '',
+        r.typeOfFoc || r.requestCategory || 'Sample/Request',
+        r.systemInvoiceNo || '',
+        r.sampleSku || r.requestItem || '',
+        r.sampleSkuQty || 1,
+        r.sampleSkuCostPerUnit || (r.budgetAmount ? Math.round((r.budgetAmount / (r.sampleSkuQty || 1)) * 100) / 100 : 0),
+        r.sampleSkuTotal || r.budgetAmount || 0,
+        r.status || '',
+        r.trackingNumber || '',
+        r.priority || ''
+      ]);
+      await exportToExcel(`requests_${new Date().toISOString().split('T')[0]}`, 'Requests', headers, rows);
+    } finally {
+      setIsExporting(false);
+    }
   };
 
   const activeFiltersCount = (teamFilter !== 'ALL' ? 1 : 0) + (statusFilter !== 'ALL' ? 1 : 0) + (priorityFilter !== 'ALL' ? 1 : 0);
@@ -166,10 +167,11 @@ export const RequestsListPage: React.FC<RequestsListPageProps> = ({
           <Button
             variant="outline"
             size="sm"
-            onClick={handleExportCSV}
+            onClick={handleExportExcel}
+            disabled={isExporting}
             leftIcon={<Download className="w-3.5 h-3.5" />}
           >
-            Export CSV
+            {isExporting ? 'Exporting...' : 'Export Excel'}
           </Button>
 
           <Button
@@ -299,20 +301,20 @@ export const RequestsListPage: React.FC<RequestsListPageProps> = ({
       {viewMode === 'table' ? (
         <Card>
           <div className="overflow-x-auto">
-            <table className="w-full text-left border-collapse text-xs min-w-[760px]">
+            <table className="w-full text-left border-collapse text-xs sm:min-w-[760px]">
               <thead>
                 <tr className="border-b border-border text-[11px] font-semibold text-muted-foreground uppercase tracking-wider bg-muted/20">
                   <th className="p-3.5 pl-4 text-primary font-bold">Date</th>
-                  <th className="p-3.5">Agent Name</th>
+                  <th className="p-3.5 hidden sm:table-cell">Agent Name</th>
                   <th className="p-3.5">Business Name</th>
                   <th className="p-3.5">Category</th>
-                  <th className="p-3.5">Invoice No</th>
-                  <th className="p-3.5">Sample SKU</th>
-                  <th className="p-3.5 text-center">Total Qty</th>
-                  <th className="p-3.5 text-right">Per Unit Cost</th>
+                  <th className="p-3.5 hidden md:table-cell">Invoice No</th>
+                  <th className="p-3.5 hidden md:table-cell">Sample SKU</th>
+                  <th className="p-3.5 text-center hidden sm:table-cell">Total Qty</th>
+                  <th className="p-3.5 text-right hidden sm:table-cell">Per Unit Cost</th>
                   <th className="p-3.5 text-right">Total Cost</th>
                   <th className="p-3.5">Status</th>
-                  <th className="p-3.5 text-right pr-4">Tracking #</th>
+                  <th className="p-3.5 text-right pr-4 hidden sm:table-cell">Tracking #</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-border/60">
@@ -343,7 +345,7 @@ export const RequestsListPage: React.FC<RequestsListPageProps> = ({
                         <td className="p-3.5 pl-4 font-mono font-bold text-primary whitespace-nowrap">
                           {reqDate}
                         </td>
-                        <td className="p-3.5 font-medium text-foreground whitespace-nowrap">
+                        <td className="p-3.5 font-medium text-foreground whitespace-nowrap hidden sm:table-cell">
                           {agentName}
                         </td>
                         <td className="p-3.5 font-semibold text-foreground group-hover:text-primary transition-colors whitespace-nowrap">
@@ -354,16 +356,16 @@ export const RequestsListPage: React.FC<RequestsListPageProps> = ({
                             {category}
                           </span>
                         </td>
-                        <td className="p-3.5 font-mono text-muted-foreground whitespace-nowrap">
+                        <td className="p-3.5 font-mono text-muted-foreground whitespace-nowrap hidden md:table-cell">
                           {invoiceNo}
                         </td>
-                        <td className="p-3.5 text-foreground font-medium truncate max-w-[180px]" title={sampleSku}>
+                        <td className="p-3.5 text-foreground font-medium truncate max-w-[180px] hidden md:table-cell" title={sampleSku}>
                           {sampleSku}
                         </td>
-                        <td className="p-3.5 text-center font-mono font-semibold">
+                        <td className="p-3.5 text-center font-mono font-semibold hidden sm:table-cell">
                           {qty}
                         </td>
-                        <td className="p-3.5 text-right font-mono text-muted-foreground whitespace-nowrap">
+                        <td className="p-3.5 text-right font-mono text-muted-foreground whitespace-nowrap hidden sm:table-cell">
                           ${unitCost.toFixed(2)}
                         </td>
                         <td className="p-3.5 text-right font-mono font-bold text-foreground whitespace-nowrap">
@@ -372,7 +374,7 @@ export const RequestsListPage: React.FC<RequestsListPageProps> = ({
                         <td className="p-3.5 whitespace-nowrap">
                           <StatusBadge status={req.status} size="sm" />
                         </td>
-                        <td className="p-3.5 text-right pr-4 font-mono font-bold text-primary whitespace-nowrap">
+                        <td className="p-3.5 text-right pr-4 font-mono font-bold text-primary whitespace-nowrap hidden sm:table-cell">
                           {req.trackingNumber}
                         </td>
                       </tr>

@@ -117,7 +117,7 @@ export const ShipmentTrackingPage: React.FC<ShipmentTrackingPageProps> = ({ onNa
       // Filter search
       if (searchQuery.trim()) {
         const q = searchQuery.toLowerCase();
-        const matchTracking = r.trackingNumber.toLowerCase().includes(q);
+        const matchTracking = (r.trackingNumber || '').toLowerCase().includes(q);
         const matchCustomer = (r.customerName || '').toLowerCase().includes(q);
         const matchCompany = (r.customerCompany || '').toLowerCase().includes(q);
         const matchItem = (r.requestItem || '').toLowerCase().includes(q);

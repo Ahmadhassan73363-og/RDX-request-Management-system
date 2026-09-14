@@ -38,7 +38,9 @@ export const BudgetsOverviewPage: React.FC = () => {
   const [adjustReason, setAdjustReason] = useState('');
   const [adjustError, setAdjustError] = useState('');
 
-  const canEditBudget = hasPermission('budgets:edit') || hasPermission('budgets:increase');
+  const canIncreaseBudget = hasPermission('budgets:edit') || hasPermission('budgets:increase');
+  const canDecreaseBudget = hasPermission('budgets:edit') || hasPermission('budgets:decrease') || hasPermission('budgets:override');
+  const canEditBudget = canIncreaseBudget || canDecreaseBudget;
 
   // Overall calculations
   const totalAllocated = teams.reduce((sum, t) => sum + (t.allocatedBudget || 0), 0);
@@ -52,7 +54,7 @@ export const BudgetsOverviewPage: React.FC = () => {
 
   const handleOpenAdjust = (teamId?: string) => {
     if (teamId) setSelectedTeamId(teamId);
-    setAdjustType('BUDGET_INCREASE');
+    setAdjustType(canIncreaseBudget ? 'BUDGET_INCREASE' : 'BUDGET_DECREASE');
     setAdjustAmount(5000);
     setAdjustReason('');
     setAdjustError('');
@@ -62,6 +64,15 @@ export const BudgetsOverviewPage: React.FC = () => {
   const handleExecuteAdjustment = (e: React.FormEvent) => {
     e.preventDefault();
     setAdjustError('');
+
+    if (adjustType === 'BUDGET_INCREASE' && !canIncreaseBudget) {
+      setAdjustError('You do not have permission to increase budgets.');
+      return;
+    }
+    if (adjustType === 'BUDGET_DECREASE' && !canDecreaseBudget) {
+      setAdjustError('You do not have permission to decrease budgets.');
+      return;
+    }
 
     const numAmount = Number(adjustAmount);
     if (!numAmount || numAmount <= 0) {
@@ -347,8 +358,8 @@ export const BudgetsOverviewPage: React.FC = () => {
               value={adjustType}
               onChange={(e) => setAdjustType(e.target.value as any)}
               options={[
-                { label: 'Increase Funds (+)', value: 'BUDGET_INCREASE' },
-                { label: 'Decrease Funds (-)', value: 'BUDGET_DECREASE' },
+                ...(canIncreaseBudget ? [{ label: 'Increase Funds (+)', value: 'BUDGET_INCREASE' }] : []),
+                ...(canDecreaseBudget ? [{ label: 'Decrease Funds (-)', value: 'BUDGET_DECREASE' }] : []),
               ]}
             />
             <Input

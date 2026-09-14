@@ -2,7 +2,7 @@ import { Role, Permission, PermissionCategory } from '../types/rbac';
 import { User } from '../types/user';
 import { Team } from '../types/team';
 import { BudgetTransaction } from '../types/budget';
-import { RequestRecord } from '../types/request';
+import { RequestRecord, AdditionalField } from '../types/request';
 import { FormSchema, FormAssignment } from '../types/form';
 import { SystemSettings } from '../types/settings';
 import { AuditLog } from '../types/audit';
@@ -417,6 +417,8 @@ export const INITIAL_TEAMS: Team[] = [
     createdAt: '2026-01-01T00:00:00Z'
   }
 ];
+
+export const INITIAL_ADDITIONAL_FIELDS: AdditionalField[] = [];
 
 export const INITIAL_BUDGET_TRANSACTIONS: BudgetTransaction[] = [
   {

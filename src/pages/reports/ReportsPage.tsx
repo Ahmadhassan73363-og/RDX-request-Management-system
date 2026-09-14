@@ -16,6 +16,7 @@ import { useSystem } from '../../context/SystemContext';
 import { Card, CardHeader, CardTitle, CardContent } from '../../components/common/Card';
 import { Button } from '../../components/common/Button';
 import { StatusBadge } from '../../components/common/Badge';
+import { exportToExcel } from '../../utils/exportExcel';
 
 export const ReportsPage: React.FC = () => {
   const { settings } = useSystem();
@@ -48,27 +49,28 @@ export const ReportsPage: React.FC = () => {
   const approvalRate = totalVolume > 0 ? Math.round((approvedCount / totalVolume) * 100) : 0;
 
   // Export functions
-  const handleExportCSV = () => {
-    const headers = ['Tracking #', 'Client', 'Company', 'Team', 'Category', 'Item / Sample', 'Retail Value ($)', 'Budget Charged ($)', 'Status', 'Date'];
-    const rows = filteredRequests.map(r => [
-      r.trackingNumber,
-      `"${r.customerName}"`,
-      `"${r.customerCompany}"`,
-      `"${r.teamName}"`,
-      `"${r.requestCategory}"`,
-      `"${r.requestItem}"`,
-      r.requestValue,
-      r.budgetAmount,
-      r.status,
-      r.requestDate
-    ]);
-    const csvContent = 'data:text/csv;charset=utf-8,' + [headers.join(','), ...rows.map(e => e.join(','))].join('\n');
-    const link = document.createElement('a');
-    link.setAttribute('href', encodeURI(csvContent));
-    link.setAttribute('download', `executive_report_${new Date().toISOString().split('T')[0]}.csv`);
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
+  const [isExportingExcel, setIsExportingExcel] = useState(false);
+
+  const handleExportExcel = async () => {
+    setIsExportingExcel(true);
+    try {
+      const headers = ['Tracking #', 'Client', 'Company', 'Team', 'Category', 'Item / Sample', 'Retail Value ($)', 'Budget Charged ($)', 'Status', 'Date'];
+      const rows = filteredRequests.map(r => [
+        r.trackingNumber || '',
+        r.customerName || '',
+        r.customerCompany || '',
+        r.teamName || '',
+        r.requestCategory || '',
+        r.requestItem || '',
+        r.requestValue || 0,
+        r.budgetAmount || 0,
+        r.status || '',
+        r.requestDate || ''
+      ]);
+      await exportToExcel(`executive_report_${new Date().toISOString().split('T')[0]}`, 'Executive Report', headers, rows);
+    } finally {
+      setIsExportingExcel(false);
+    }
   };
 
   const handleExportExcelJSON = () => {
@@ -99,10 +101,11 @@ export const ReportsPage: React.FC = () => {
           <Button
             variant="outline"
             size="sm"
-            onClick={handleExportCSV}
+            onClick={handleExportExcel}
+            disabled={isExportingExcel}
             leftIcon={<Download className="w-3.5 h-3.5" />}
           >
-            Export CSV
+            {isExportingExcel ? 'Exporting...' : 'Export Excel'}
           </Button>
           <Button
             variant="outline"
