@@ -24,13 +24,16 @@ export const NotificationProvider: React.FC<{ children: React.ReactNode }> = ({ 
 
   const refreshNotifications = () => {
     const all = dataService.getNotifications();
-    // Filter relevant notifications for current user or admin/role broadcasts
+    // Filter relevant notifications for current user or admin/role broadcasts.
+    // Stage-transition "Approval Required" notices are broadcast to
+    // 'approvers_' + roleName.toLowerCase() (see dataService.processApprovalStep) —
+    // must match that exact pattern for any approver (Executive/Manager/HOD/President) to see them.
+    const roleBroadcastId = 'approvers_' + currentUser.roleName.toLowerCase().replace(/\s+/g, '_');
     const relevant = all.filter(n =>
       n.userId === currentUser.id ||
       n.userId === 'all_admins' ||
-      (currentUser.roleName === 'Executive' && n.userId === 'all_executives') ||
-      (currentUser.roleName === 'President' && n.userId === 'all_presidents') ||
-      (currentUser.roleName === 'Assistant' && n.userId === 'all_assistants')
+      n.userId === roleBroadcastId ||
+      (currentUser.roleName === 'Executive' && n.userId === 'all_executives')
     );
     setNotifications(relevant);
   };

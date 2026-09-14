@@ -1333,13 +1333,13 @@ export const INITIAL_SETTINGS: SystemSettings = {
     {
       id: 'chain-enterprise-default',
       name: 'Default 4-Stage Governance Chain',
-      description: 'Standard multi-level sign-off: Executive -> Assistant -> HOD -> President',
+      description: 'Standard multi-level sign-off: Executive -> Manager -> HOD -> President',
       isDefault: true,
       steps: [
         { id: 's-1', order: 1, roleId: 'role-executive', roleName: 'Executive', label: 'Executive Review', isRequired: true },
-        { id: 's-2', order: 2, roleId: 'role-assistant', roleName: 'Assistant', label: 'Executive Assistant Review', isRequired: true },
-        { id: 's-3', order: 3, roleId: 'role-hod', roleName: 'HOD', label: 'HOD Review', isRequired: true },
-        { id: 's-4', order: 4, roleId: 'role-president', roleName: 'President', label: 'President Sign-Off', isRequired: true }
+        { id: 's-2', order: 2, roleId: 'role-manager', roleName: 'Manager', label: 'Manager Verification', isRequired: true },
+        { id: 's-3', order: 3, roleId: 'role-hod', roleName: 'HOD', label: 'HOD Approval', isRequired: true },
+        { id: 's-4', order: 4, roleId: 'role-president', roleName: 'President', label: 'Presidential Sign-Off', isRequired: true }
       ]
     }
   ]
