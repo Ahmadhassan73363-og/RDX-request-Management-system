@@ -31,9 +31,9 @@ export const Sidebar: React.FC<SidebarProps> = ({ currentPath, onNavigate, onClo
   const { hasPermission, currentUser, logout } = useAuth();
   const { settings } = useSystem();
 
-  // Get count of pending approvals for badge
+  // Get count of pending approvals for badge — must match ApprovalsQueuePage's own filter
   const pendingApprovalsCount = dataService.getRequests().filter(r =>
-    ['pending_executive', 'pending_assistant', 'pending_president', 'submitted', 'under_review'].includes(r.status)
+    ['submitted', 'under_review', 'pending_executive', 'pending_manager', 'pending_hod', 'pending_assistant', 'pending_president'].includes(r.status)
   ).length;
 
   // Active shipments count (not yet delivered)
