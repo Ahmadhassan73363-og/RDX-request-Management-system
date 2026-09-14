@@ -40,7 +40,25 @@ interface RequestDetailPageProps {
 export const RequestDetailPage: React.FC<RequestDetailPageProps> = ({ requestId, onBack, onUpdate }) => {
   const { currentUser, hasPermission } = useAuth();
   const request = dataService.getRequestById(requestId);
-  const team = request ? dataService.getTeams().find(t => t.id === request.teamId) : null;
+  const realTeam = request ? dataService.getTeams().find(t => t.id === request.teamId) : null;
+  // The request's team can be deleted out from under it (its team_id gets nulled
+  // server-side). Fall back to a zeroed placeholder instead of treating this
+  // request as "not found" — that was misleading and blocked viewing/acting on it.
+  const team = realTeam || (request ? {
+    id: '',
+    name: request.teamName || 'Unassigned team',
+    code: '',
+    description: '',
+    leadId: '',
+    leadName: '',
+    allocatedBudget: 0,
+    spentBudget: 0,
+    remainingBudget: 0,
+    active: false,
+    memberCount: 0,
+    currency: '$',
+    createdAt: request.createdAt
+  } : null);
 
   const [commentText, setCommentText] = useState('');
   const [isActionModalOpen, setIsActionModalOpen] = useState(false);
@@ -554,6 +572,12 @@ export const RequestDetailPage: React.FC<RequestDetailPageProps> = ({ requestId,
               </p>
             </CardHeader>
             <CardContent className="space-y-4">
+              {!realTeam && (
+                <div className="p-2.5 rounded-lg bg-amber-500/10 border border-amber-500/30 text-[11px] text-amber-700 dark:text-amber-400 flex items-center gap-1.5">
+                  <AlertTriangle className="w-3.5 h-3.5 shrink-0" />
+                  <span>This request's team ("{team.name}") was deleted — budget figures below are unavailable and approval may be blocked until it's reassigned.</span>
+                </div>
+              )}
               {/* Financial Snapshot Numbers */}
               <div className="space-y-3 font-mono text-xs">
                 <div className="flex items-center justify-between pb-2 border-b border-border/80">

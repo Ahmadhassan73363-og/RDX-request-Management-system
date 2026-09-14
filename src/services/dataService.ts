@@ -481,6 +481,14 @@ class DataService {
     const team = teams.find(t => t.id === teamId);
     if (!team) throw new Error('Team not found');
 
+    // The DB's FK for requests.team_id is ON DELETE SET NULL — deleting a team with
+    // linked requests would silently orphan them (missing team, broken budget math)
+    // instead of failing loudly. Block it here instead.
+    const dependentRequests = this.getRequests().filter(r => r.teamId === teamId);
+    if (dependentRequests.length > 0) {
+      throw new Error(`Cannot delete ${team.name}: ${dependentRequests.length} request(s) are still linked to this team. Reassign or resolve them first.`);
+    }
+
     teams = teams.filter(t => t.id !== teamId);
     storage.set('teams', teams);
     api.deleteTeam(teamId).catch(() => {});
