@@ -110,25 +110,6 @@ export const INITIAL_ROLES: Role[] = [
   },
   {
     id: 'role-assistant',
-    name: 'Assistant',
-    description: 'Executive Assistant validating operational documentation and conducting Stage 2 reviews',
-    isSystem: true,
-    color: '#0284c7',
-    permissions: [
-      'dashboard:view',
-      'users:view',
-      'forms:submit',
-      'approvals:approve',
-      'approvals:reject',
-      'approvals:request_changes',
-      'budgets:view',
-      'shipments:view',
-      'reports:view'
-    ],
-    createdAt: '2026-01-01T00:00:00Z'
-  },
-  {
-    id: 'role-manager',
     name: 'Manager',
     description: 'Departmental manager conducting Stage 2 operational reviews and budget checks',
     isSystem: true,
@@ -258,8 +239,8 @@ export const INITIAL_USERS: User[] = [
     password: 'assistant@123',
     avatar: 'https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?w=150&auto=format&fit=crop&q=80',
     roleId: 'role-assistant',
-    roleName: 'Assistant',
-    title: 'Executive Assistant',
+    roleName: 'Manager',
+    title: 'Operations Manager',
     department: 'Executive Office',
     status: 'active',
     phone: '+1 (555) 567-8901',
@@ -1337,7 +1318,7 @@ export const INITIAL_SETTINGS: SystemSettings = {
       isDefault: true,
       steps: [
         { id: 's-1', order: 1, roleId: 'role-executive', roleName: 'Executive', label: 'Executive Review', isRequired: true },
-        { id: 's-2', order: 2, roleId: 'role-manager', roleName: 'Manager', label: 'Manager Verification', isRequired: true },
+        { id: 's-2', order: 2, roleId: 'role-assistant', roleName: 'Manager', label: 'Manager Verification', isRequired: true },
         { id: 's-3', order: 3, roleId: 'role-hod', roleName: 'HOD', label: 'HOD Approval', isRequired: true },
         { id: 's-4', order: 4, roleId: 'role-president', roleName: 'President', label: 'Presidential Sign-Off', isRequired: true }
       ]

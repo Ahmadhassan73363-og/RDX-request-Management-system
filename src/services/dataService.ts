@@ -796,7 +796,7 @@ class DataService {
 
   /**
    * Multi-level approval engine
-   * Progresses request through Executive -> Assistant -> President -> Admin -> Approved
+   * Progresses request through Executive -> Manager -> HOD -> President -> Approved
    * Deducts budget on final approval
    * Blocks if insufficient budget unless overridden by authorized user
    */

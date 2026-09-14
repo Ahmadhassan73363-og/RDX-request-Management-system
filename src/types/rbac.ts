@@ -57,7 +57,6 @@ export type DefaultRoleName =
   | 'Admin'
   | 'Executive'
   | 'Manager'
-  | 'Assistant'
   | 'HOD'
   | 'President'
   | 'Shipment Manager'

@@ -23,7 +23,6 @@ const ROLE_COLORS: Record<string, string> = {
   'Super Admin': '#b71234',
   'Executive': '#dc2626',
   'Manager': '#2563eb',
-  'Assistant': '#0284c7',
   'HOD': '#059669',
   'President': '#7c3aed',
   'Shipment Manager': '#ea580c',
