@@ -23,6 +23,7 @@ import { dataService } from '../../services/dataService';
 import { Card, CardHeader, CardTitle, CardContent } from '../../components/common/Card';
 import { Button } from '../../components/common/Button';
 import { Badge, StatusBadge, PriorityBadge } from '../../components/common/Badge';
+import { useSyncedState } from '../../hooks/useSyncedState';
 
 interface DashboardPageProps {
   onNavigate: (path: string) => void;
@@ -38,7 +39,7 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onNavigate, onOpen
   const auditLogs = dataService.getAuditLogs().slice(0, 6);
 
   // Additional (user-defined) columns joined onto the Recent Requests table
-  const [additionalFields, setAdditionalFields] = useState(dataService.getAdditionalFields());
+  const [additionalFields, setAdditionalFields] = useSyncedState(() => dataService.getAdditionalFields());
   const [isAddingField, setIsAddingField] = useState(false);
   const [newFieldLabel, setNewFieldLabel] = useState('');
   const canManageColumns = hasPermission('settings:system');
