@@ -4,6 +4,7 @@ import dotenv from 'dotenv';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { pool } from './db.js';
+import { ensureSchema } from './initDb.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -18,6 +19,32 @@ app.use(cors({
   allowedHeaders: ['Content-Type', 'Authorization']
 }));
 app.use(express.json({ limit: '10mb' }));
+
+// Ensure database tables and columns exist before serving requests
+app.use(async (req, res, next) => {
+  try {
+    await ensureSchema();
+  } catch (err) {
+    console.error('Schema auto-check notice:', err.message);
+  }
+  next();
+});
+
+// Path normalizer for Vercel serverless function routing and rewrite edge cases
+app.use((req, res, next) => {
+  // If the request was rewritten internally to /api/index, attempt to recover original path
+  if (req.url.startsWith('/api/index') || req.url.startsWith('/index')) {
+    const rawPath = req.headers['x-matched-path'] || req.headers['x-forwarded-uri'];
+    if (typeof rawPath === 'string' && !rawPath.includes('/api/index') && !rawPath.includes('/index')) {
+      req.url = rawPath;
+    }
+  }
+  // Ensure path starts with /api for standard route matching
+  if (!req.url.startsWith('/api')) {
+    req.url = '/api' + req.url;
+  }
+  next();
+});
 
 // Health Check
 app.get('/api/health', async (req, res) => {
@@ -142,6 +169,8 @@ function mapRequest(row) {
     sampleSkuTotal: row.sample_sku_total != null ? parseFloat(row.sample_sku_total) : undefined,
     skuItems: Array.isArray(row.sku_items) ? row.sku_items : (typeof row.sku_items === 'string' ? JSON.parse(row.sku_items) : []),
     customFields: row.custom_fields || {},
+    formId: row.form_id || undefined,
+    formTitle: row.form_title || undefined,
     // 'pending' is the DB column's default for requests that never entered the shipment
     // pipeline — treat it as "no shipment status" instead of a real active state.
     shipmentStatus: (row.shipment_status && row.shipment_status !== 'pending') ? row.shipment_status : undefined,
@@ -568,6 +597,39 @@ app.post('/api/requests', async (req, res) => {
       ? (await pool.query('SELECT id FROM teams WHERE id = $1', [reqData.teamId])).rows[0]?.id || null
       : null;
 
+    // Disambiguate tracking number to prevent unique constraint crashes
+    let trackingNumber = reqData.trackingNumber || `REQ-${new Date().getFullYear()}-${Math.floor(1000 + Math.random() * 9000)}`;
+    const existingTracking = await pool.query('SELECT id FROM requests WHERE tracking_number = $1 AND id != $2', [trackingNumber, reqData.id || '']);
+    if (existingTracking.rows.length > 0) {
+      trackingNumber = `REQ-${new Date().getFullYear()}-${Date.now().toString().slice(-4)}${Math.floor(100 + Math.random() * 900)}`;
+    }
+
+    // Sanitize dates and timestamps (empty strings must be null for Postgres DATE/TIMESTAMP)
+    const requestDate = (reqData.requestDate && String(reqData.requestDate).trim()) ||
+                        (reqData.date && String(reqData.date).trim()) ||
+                        new Date().toISOString().split('T')[0];
+    const deliveryTargetDate = (reqData.deliveryTargetDate && String(reqData.deliveryTargetDate).trim())
+      ? String(reqData.deliveryTargetDate).trim().split('T')[0]
+      : null;
+    const dateVal = (reqData.date && String(reqData.date).trim())
+      ? String(reqData.date).trim().split('T')[0]
+      : requestDate;
+    const deliveredAt = (reqData.deliveredAt && String(reqData.deliveredAt).trim())
+      ? String(reqData.deliveredAt).trim()
+      : null;
+
+    const discountPercentage = parseFloat(reqData.discountPercentage) || 0;
+    const requestValue = parseFloat(reqData.requestValue) || parseFloat(reqData.sampleSkuTotal) || 0;
+    const budgetAmount = parseFloat(reqData.budgetAmount) || parseFloat(reqData.sampleSkuTotal) || 0;
+    const approvedAmount = (reqData.approvedAmount != null && reqData.approvedAmount !== '')
+      ? parseFloat(reqData.approvedAmount)
+      : null;
+    const sampleSkuQty = parseInt(reqData.sampleSkuQty, 10) || 0;
+    const sampleSkuCostPerUnit = parseFloat(reqData.sampleSkuCostPerUnit) || 0;
+    const sampleSkuTotal = parseFloat(reqData.sampleSkuTotal) || 0;
+    const teamRemainingBudgetAtRequest = parseFloat(reqData.teamRemainingBudgetAtRequest) || 0;
+    const budgetAfterApproval = parseFloat(reqData.budgetAfterApproval) || 0;
+
     const result = await pool.query(
       `INSERT INTO requests (
          id, tracking_number, customer_name, customer_company, request_category,
@@ -579,14 +641,14 @@ app.post('/api/requests', async (req, res) => {
          attachments, comments, approval_history, date, department,
          agent_or_team_name, business_name, type_of_foc, system_invoice_no,
          sample_sku, sample_sku_qty, sample_sku_cost_per_unit, sample_sku_total,
-         sku_items, shipment_status, custom_fields, delivered_at,
+         sku_items, shipment_status, custom_fields, form_id, form_title, delivered_at,
          created_at, updated_at
        ) VALUES (
          $1, $2, $3, $4, $5, $6, $7, $8, $9, $10,
          $11, $12, $13, $14, $15, $16, $17, $18, $19, $20,
          $21, $22, $23, $24, $25, $26, $27, $28, $29, $30,
          $31, $32, $33, $34, $35, $36, $37, $38, $39, $40,
-         $41, $42, $43, $44
+         $41, $42, $43, $44, $45, $46
        )
        ON CONFLICT (id) DO UPDATE SET
          customer_name = COALESCE(EXCLUDED.customer_name, requests.customer_name),
@@ -606,59 +668,63 @@ app.post('/api/requests', async (req, res) => {
          sku_items = COALESCE(EXCLUDED.sku_items, requests.sku_items),
          shipment_status = COALESCE(EXCLUDED.shipment_status, requests.shipment_status),
          custom_fields = COALESCE(EXCLUDED.custom_fields, requests.custom_fields),
+         form_id = COALESCE(EXCLUDED.form_id, requests.form_id),
+         form_title = COALESCE(EXCLUDED.form_title, requests.form_title),
          delivered_at = COALESCE(EXCLUDED.delivered_at, requests.delivered_at),
          updated_at = CURRENT_TIMESTAMP
        RETURNING *`,
       [
         reqData.id || `req-${Date.now()}`,
-        reqData.trackingNumber || `RDX-${new Date().getFullYear()}-${Math.floor(1000 + Math.random() * 9000)}`,
+        trackingNumber,
         reqData.customerName || reqData.agentOrTeamName || 'Customer',
         reqData.customerCompany || reqData.businessName || '',
         reqData.requestCategory || reqData.typeOfFoc || '',
         reqData.requestItem || reqData.sampleSku || '',
-        reqData.discountPercentage || 0,
-        reqData.requestValue || reqData.sampleSkuTotal || 0,
-        reqData.budgetAmount || reqData.sampleSkuTotal || 0,
+        discountPercentage,
+        requestValue,
+        budgetAmount,
         teamId,
         reqData.teamName || '',
         reqData.reason || '',
-        reqData.requestDate || reqData.date || new Date().toISOString().split('T')[0],
-        reqData.deliveryTargetDate || null,
+        requestDate,
+        deliveryTargetDate,
         reqData.priority || 'normal',
         reqData.status || 'submitted',
         reqData.currentApprovalStepIndex || 1,
         reqData.totalApprovalSteps || 4,
         reqData.currentApproverRole || 'Executive',
-        reqData.teamRemainingBudgetAtRequest || 0,
-        reqData.budgetAfterApproval || 0,
-        reqData.approvedAmount || null,
+        teamRemainingBudgetAtRequest,
+        budgetAfterApproval,
+        approvedAmount,
         userId,
         reqData.submittedByUserName || '',
         reqData.submittedByUserEmail || '',
         JSON.stringify(reqData.attachments || []),
         JSON.stringify(reqData.comments || []),
         JSON.stringify(reqData.approvalHistory || []),
-        reqData.date || reqData.requestDate || new Date().toISOString().split('T')[0],
+        dateVal,
         reqData.department || '',
         reqData.agentOrTeamName || '',
         reqData.businessName || '',
         reqData.typeOfFoc || '',
         reqData.systemInvoiceNo ? String(reqData.systemInvoiceNo) : null,
         reqData.sampleSku || null,
-        reqData.sampleSkuQty || 0,
-        reqData.sampleSkuCostPerUnit || 0,
-        reqData.sampleSkuTotal || 0,
+        sampleSkuQty,
+        sampleSkuCostPerUnit,
+        sampleSkuTotal,
         JSON.stringify(reqData.skuItems || []),
         reqData.shipmentStatus || 'pending',
         JSON.stringify(reqData.customFields || {}),
-        reqData.deliveredAt || null,
+        reqData.formId || null,
+        reqData.formTitle || null,
+        deliveredAt,
         reqData.createdAt || new Date().toISOString(),
         reqData.updatedAt || new Date().toISOString()
       ]
     );
     res.status(201).json(mapRequest(result.rows[0]));
   } catch (err) {
-    console.error('Error saving request', err);
+    console.error('Error saving request:', err);
     res.status(500).json({ error: err.message });
   }
 });
@@ -667,6 +733,16 @@ app.put('/api/requests/:id', async (req, res) => {
   const { id } = req.params;
   const r = req.body;
   try {
+    const deliveryTargetDate = (r.deliveryTargetDate && String(r.deliveryTargetDate).trim())
+      ? String(r.deliveryTargetDate).trim().split('T')[0]
+      : (r.deliveryTargetDate === null ? null : undefined);
+    const dateVal = (r.date && String(r.date).trim())
+      ? String(r.date).trim().split('T')[0]
+      : undefined;
+    const deliveredAt = (r.deliveredAt && String(r.deliveredAt).trim())
+      ? String(r.deliveredAt).trim()
+      : (r.deliveredAt === null ? null : undefined);
+
     const result = await pool.query(
       `UPDATE requests SET
          customer_name = COALESCE($1, customer_name),
@@ -687,34 +763,69 @@ app.put('/api/requests/:id', async (req, res) => {
          sku_items = COALESCE($16, sku_items),
          custom_fields = COALESCE($17, custom_fields),
          delivered_at = COALESCE($18, delivered_at),
+         date = COALESCE($19, date),
+         department = COALESCE($20, department),
+         agent_or_team_name = COALESCE($21, agent_or_team_name),
+         business_name = COALESCE($22, business_name),
+         type_of_foc = COALESCE($23, type_of_foc),
+         system_invoice_no = COALESCE($24, system_invoice_no),
+         sample_sku = COALESCE($25, sample_sku),
+         sample_sku_qty = COALESCE($26, sample_sku_qty),
+         sample_sku_cost_per_unit = COALESCE($27, sample_sku_cost_per_unit),
+         sample_sku_total = COALESCE($28, sample_sku_total),
+         priority = COALESCE($29, priority),
+         reason = COALESCE($30, reason),
+         delivery_target_date = COALESCE($31, delivery_target_date),
+         team_remaining_budget_at_request = COALESCE($32, team_remaining_budget_at_request),
+         budget_after_approval = COALESCE($33, budget_after_approval),
+         form_id = COALESCE($34, form_id),
+         form_title = COALESCE($35, form_title),
          updated_at = CURRENT_TIMESTAMP
-       WHERE id = $19
+       WHERE id = $36
        RETURNING *`,
       [
-        r.customerName,
-        r.customerCompany,
-        r.requestCategory,
-        r.requestItem,
-        r.discountPercentage,
-        r.requestValue,
-        r.budgetAmount,
-        r.status,
-        r.currentApprovalStepIndex,
-        r.currentApproverRole,
-        r.approvedAmount,
+        r.customerName ?? null,
+        r.customerCompany ?? null,
+        r.requestCategory ?? null,
+        r.requestItem ?? null,
+        r.discountPercentage != null ? parseFloat(r.discountPercentage) : null,
+        r.requestValue != null ? parseFloat(r.requestValue) : null,
+        r.budgetAmount != null ? parseFloat(r.budgetAmount) : null,
+        r.status ?? null,
+        r.currentApprovalStepIndex != null ? parseInt(r.currentApprovalStepIndex, 10) : null,
+        r.currentApproverRole ?? null,
+        r.approvedAmount != null ? parseFloat(r.approvedAmount) : null,
         r.comments ? JSON.stringify(r.comments) : null,
         r.approvalHistory ? JSON.stringify(r.approvalHistory) : null,
         r.attachments ? JSON.stringify(r.attachments) : null,
-        r.shipmentStatus,
+        r.shipmentStatus ?? null,
         r.skuItems ? JSON.stringify(r.skuItems) : null,
         r.customFields ? JSON.stringify(r.customFields) : null,
-        r.deliveredAt || null,
+        deliveredAt ?? null,
+        dateVal ?? null,
+        r.department ?? null,
+        r.agentOrTeamName ?? null,
+        r.businessName ?? null,
+        r.typeOfFoc ?? null,
+        r.systemInvoiceNo ? String(r.systemInvoiceNo) : null,
+        r.sampleSku ?? null,
+        r.sampleSkuQty != null ? parseInt(r.sampleSkuQty, 10) : null,
+        r.sampleSkuCostPerUnit != null ? parseFloat(r.sampleSkuCostPerUnit) : null,
+        r.sampleSkuTotal != null ? parseFloat(r.sampleSkuTotal) : null,
+        r.priority ?? null,
+        r.reason ?? null,
+        deliveryTargetDate ?? null,
+        r.teamRemainingBudgetAtRequest != null ? parseFloat(r.teamRemainingBudgetAtRequest) : null,
+        r.budgetAfterApproval != null ? parseFloat(r.budgetAfterApproval) : null,
+        r.formId ?? null,
+        r.formTitle ?? null,
         id
       ]
     );
     if (!result.rows.length) return res.status(404).json({ error: 'Request not found' });
     res.json(mapRequest(result.rows[0]));
   } catch (err) {
+    console.error('Error updating request:', err);
     res.status(500).json({ error: err.message });
   }
 });
@@ -743,6 +854,13 @@ app.get('/api/budget-transactions', async (req, res) => {
 app.post('/api/budget-transactions', async (req, res) => {
   const b = req.body;
   try {
+    const teamId = b.teamId
+      ? (await pool.query('SELECT id FROM teams WHERE id = $1', [b.teamId])).rows[0]?.id || null
+      : null;
+    const userId = b.performedByUserId
+      ? (await pool.query('SELECT id FROM users WHERE id = $1', [b.performedByUserId])).rows[0]?.id || null
+      : null;
+
     const result = await pool.query(
       `INSERT INTO budget_transactions (id, team_id, team_name, type, amount, balance_before, balance_after, reason, request_id, performed_by_user_id, performed_by_user_name, is_override, created_at)
        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
@@ -750,22 +868,23 @@ app.post('/api/budget-transactions', async (req, res) => {
        RETURNING *`,
       [
         b.id || `txn-${Date.now()}`,
-        b.teamId,
+        teamId,
         b.teamName || '',
         b.type,
-        b.amount,
-        b.balanceBefore,
-        b.balanceAfter,
+        parseFloat(b.amount) || 0,
+        parseFloat(b.balanceBefore) || 0,
+        parseFloat(b.balanceAfter) || 0,
         b.reason || '',
         b.requestId || null,
-        b.performedByUserId || null,
+        userId,
         b.performedByUserName || '',
-        b.isOverride ?? false,
+        Boolean(b.isOverride),
         b.createdAt || new Date().toISOString()
       ]
     );
     res.status(201).json(result.rows[0] ? mapBudgetTxn(result.rows[0]) : b);
   } catch (err) {
+    console.error('Error adding budget transaction:', err);
     res.status(500).json({ error: err.message });
   }
 });

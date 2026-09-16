@@ -49,7 +49,29 @@ class DataService {
         storage.set('users', usersWithPasswords);
       }
       if (Array.isArray(data.teams) && data.teams.length) storage.set('teams', data.teams);
-      if (Array.isArray(data.requests) && data.requests.length) storage.set('requests', data.requests);
+      if (Array.isArray(data.requests)) {
+        // Smart non-destructive merge: preserve local requests that have not reached the DB yet
+        const localRequests = this.getRequests();
+        const dbIds = new Set(data.requests.map((r: RequestRecord) => r.id));
+        const unsyncedLocals = localRequests.filter(lr => !dbIds.has(lr.id));
+
+        // DB records take precedence for matching IDs; local unsynced records are kept
+        const mergedRequests = [...data.requests, ...unsyncedLocals];
+        storage.set('requests', mergedRequests);
+
+        // Re-attempt synchronization for any unsynced local requests in the background
+        if (unsyncedLocals.length > 0) {
+          unsyncedLocals.forEach(un => {
+            api.createRequest({
+              ...un,
+              requestDate: un.requestDate,
+              submittedByUserId: un.submittedByUserId,
+              submittedByUserName: un.submittedByUserName,
+              submittedByUserEmail: un.submittedByUserEmail
+            }).catch(() => {});
+          });
+        }
+      }
       if (Array.isArray(data.forms) && data.forms.length) storage.set('forms', data.forms);
       if (Array.isArray(data.formAssignments) && data.formAssignments.length) storage.set('form_assignments', data.formAssignments);
       if (Array.isArray(data.budgetTransactions) && data.budgetTransactions.length) storage.set('budget_transactions', data.budgetTransactions);
@@ -673,8 +695,10 @@ class DataService {
     const budgetAfterApproval = remainingBudget - budgetAmount;
 
     const requests = this.getRequests();
-    const count = requests.length + 1;
-    const trackingNumber = `REQ-2026-${String(count).padStart(4, '0')}`;
+    // Collision-free tracking number generator using current year and high-entropy timestamp suffix
+    const currentYear = new Date().getFullYear();
+    const uniqueSuffix = Date.now().toString().slice(-4) + Math.floor(100 + Math.random() * 900);
+    const trackingNumber = `REQ-${currentYear}-${uniqueSuffix}`;
 
     const effectiveDate = payload.date || payload.deliveryTargetDate || new Date().toISOString().split('T')[0];
     const effectiveCompany = payload.businessName || payload.customerCompany || 'Enterprise Client';

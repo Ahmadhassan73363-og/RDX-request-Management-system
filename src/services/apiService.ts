@@ -10,10 +10,13 @@ export interface ApiSyncErrorDetail {
 async function request(label: string, url: string, options?: RequestInit): Promise<boolean> {
   try {
     const res = await fetch(url, options);
-    if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
+    if (!res.ok) {
+      const errBody = await res.text().catch(() => '');
+      throw new Error(`${res.status} ${res.statusText}${errBody ? `: ${errBody}` : ''}`);
+    }
     return true;
   } catch (e) {
-    console.warn(`API sync failed for ${label}`, e);
+    console.warn(`API sync failed for ${label}:`, e);
     if (typeof window !== 'undefined') {
       window.dispatchEvent(new CustomEvent<ApiSyncErrorDetail>('api-sync-error', { detail: { label, error: e } }));
     }

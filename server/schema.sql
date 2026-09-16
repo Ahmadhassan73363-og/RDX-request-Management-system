@@ -99,6 +99,8 @@ CREATE TABLE requests (
   sample_sku_total NUMERIC(15, 2) DEFAULT 0,
   sku_items JSONB DEFAULT '[]'::jsonb,
   custom_fields JSONB DEFAULT '{}'::jsonb,
+  form_id VARCHAR(50),
+  form_title VARCHAR(200),
   shipment_status VARCHAR(50) DEFAULT 'pending',
   delivered_at TIMESTAMP WITH TIME ZONE,
   created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
