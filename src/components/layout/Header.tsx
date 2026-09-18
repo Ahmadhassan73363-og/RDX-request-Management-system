@@ -93,10 +93,10 @@ export const Header: React.FC<HeaderProps> = ({ onOpenCommandPalette, onToggleSi
           </div>
           <div className="hidden sm:block truncate">
             <h1 className="text-sm font-bold text-foreground leading-tight tracking-tight truncate">
-              {settings.branding.companyName}
+              {settings?.branding?.companyName || 'RDX Management'}
             </h1>
             <p className="text-[11px] text-muted-foreground font-medium truncate">
-              {settings.branding.appTitle}
+              {settings?.branding?.appTitle || 'Enterprise Request Tracking'}
             </p>
           </div>
         </div>

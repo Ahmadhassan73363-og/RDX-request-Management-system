@@ -32,13 +32,19 @@ app.use(async (req, res, next) => {
 
 // Path normalizer for Vercel serverless function routing and rewrite edge cases
 app.use((req, res, next) => {
-  // If the request was rewritten internally to /api/index, attempt to recover original path
-  if (req.url.startsWith('/api/index') || req.url.startsWith('/index')) {
-    const rawPath = req.headers['x-matched-path'] || req.headers['x-forwarded-uri'];
-    if (typeof rawPath === 'string' && !rawPath.includes('/api/index') && !rawPath.includes('/index')) {
+  // If the request was rewritten internally or routed to catch-all, recover real path
+  const rawPath = req.headers['x-matched-path'] || req.headers['x-forwarded-uri'] || req.headers['x-original-url'];
+  if (typeof rawPath === 'string' && !rawPath.includes('/api/index') && !rawPath.includes('[...all]')) {
+    req.url = rawPath;
+  } else if (req.url.includes('[...all]') && req.query?.all) {
+    const segments = Array.isArray(req.query.all) ? req.query.all.join('/') : req.query.all;
+    req.url = '/api/' + segments;
+  } else if (req.url.startsWith('/api/index') || req.url.startsWith('/index')) {
+    if (typeof rawPath === 'string' && !rawPath.includes('/api/index')) {
       req.url = rawPath;
     }
   }
+
   // Ensure path starts with /api for standard route matching
   if (!req.url.startsWith('/api')) {
     req.url = '/api' + req.url;

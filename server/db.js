@@ -16,7 +16,8 @@ const connectionString =
   process.env.DATABASE_URL ||
   process.env.POSTGRES_URL ||
   process.env.POSTGRES_PRISMA_URL ||
-  process.env.POSTGRES_URL_NON_POOLING;
+  process.env.POSTGRES_URL_NON_POOLING ||
+  'postgresql://neondb_owner:npg_Jc3vfCzM4DLN@ep-purple-recipe-aym3x839-pooler.c-5.us-east-2.aws.neon.tech/neondb?sslmode=require';
 
 const isSsl =
   process.env.PGSSL === 'true' ||

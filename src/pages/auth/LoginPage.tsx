@@ -80,10 +80,10 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLoginSuccess }) => {
           </div>
           <div>
             <h1 className="text-2xl font-bold tracking-tight text-foreground">
-              {settings.branding.companyName}
+              {settings?.branding?.companyName || 'RDX Management'}
             </h1>
             <p className="text-xs text-muted-foreground font-medium mt-0.5">
-              {settings.branding.appTitle}
+              {settings?.branding?.appTitle || 'Enterprise Request Tracking'}
             </p>
           </div>
         </div>

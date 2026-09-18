@@ -15,7 +15,16 @@ import app from './app.js';
 
 const PORT = process.env.PORT || 5000;
 
-app.listen(PORT, () => {
+const server = app.listen(PORT, () => {
   console.log(`🚀 RDX Management Backend running on http://localhost:${PORT}`);
   console.log(`📊 Connected to PostgreSQL (database: ${process.env.PGDATABASE || 'neondb'})`);
+});
+
+server.on('error', (err) => {
+  if (err.code === 'EADDRINUSE') {
+    console.error(`❌ Port ${PORT} is already in use by another process. Please close it first or set PORT=<other_port>.`);
+  } else {
+    console.error('❌ Server startup error:', err);
+  }
+  process.exit(1);
 });
