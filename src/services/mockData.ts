@@ -3,6 +3,9 @@ import { User } from '../types/user';
 import { Team } from '../types/team';
 import { BudgetTransaction } from '../types/budget';
 import { RequestRecord, AdditionalField } from '../types/request';
+import { Company } from '../types/company';
+import { Warehouse } from '../types/warehouse';
+import { Customer } from '../types/customer';
 import { FormSchema, FormAssignment } from '../types/form';
 import { SystemSettings } from '../types/settings';
 import { AuditLog } from '../types/audit';
@@ -415,6 +418,170 @@ export const INITIAL_TEAMS: Team[] = [
     currency: '$',
     color: '#06b6d4',
     createdAt: '2026-01-01T00:00:00Z'
+  }
+];
+
+export const INITIAL_COMPANIES: Company[] = [
+  {
+    id: 'company-1',
+    name: 'RDX Global',
+    shortCode: 'RDXG',
+    legalName: 'RDX Global Holdings Inc.',
+    address: '1 Enterprise Plaza, New York, NY 10001, USA',
+    taxId: 'US-EIN-84-1029384',
+    contactName: 'Alexander Vance',
+    contactEmail: 'alexander.vance@enterprise.com',
+    contactPhone: '+1 (555) 100-1000',
+    defaultCurrency: 'USD',
+    color: '#b71234',
+    active: true,
+    createdAt: '2026-01-01T00:00:00Z'
+  },
+  {
+    id: 'company-2',
+    name: 'RDX Europe',
+    shortCode: 'RDXE',
+    legalName: 'RDX Europe B.V.',
+    address: 'Herengracht 100, 1015 BS Amsterdam, Netherlands',
+    taxId: 'NL-VAT-NL861234567B01',
+    contactName: 'Eleanor Sterling',
+    contactEmail: 'eleanor.sterling@enterprise.com',
+    contactPhone: '+31 20 555 0101',
+    defaultCurrency: 'EUR',
+    color: '#7c3aed',
+    active: true,
+    createdAt: '2026-01-01T00:00:00Z'
+  },
+  {
+    id: 'company-3',
+    name: 'RDX Asia Pacific',
+    shortCode: 'RDXAP',
+    legalName: 'RDX Asia Pacific Pte. Ltd.',
+    address: '1 Marina Boulevard, Singapore 018989',
+    taxId: 'SG-UEN-201912345K',
+    contactName: 'Marcus Brody',
+    contactEmail: 'marcus.brody@enterprise.com',
+    contactPhone: '+65 6555 0101',
+    defaultCurrency: 'USD',
+    color: '#059669',
+    active: true,
+    createdAt: '2026-01-01T00:00:00Z'
+  },
+  {
+    id: 'company-4',
+    name: 'RDX Distribution',
+    shortCode: 'RDXD',
+    legalName: 'RDX Distribution & Logistics LLC',
+    address: '400 Commerce Drive, Dallas, TX 75201, USA',
+    taxId: 'US-EIN-47-5566778',
+    contactName: 'David Miller',
+    contactEmail: 'david.miller@enterprise.com',
+    contactPhone: '+1 (555) 100-4000',
+    defaultCurrency: 'USD',
+    color: '#ea580c',
+    active: true,
+    createdAt: '2026-01-01T00:00:00Z'
+  }
+];
+
+export const INITIAL_WAREHOUSES: Warehouse[] = [
+  {
+    id: 'warehouse-1',
+    name: 'East Coast Distribution Center',
+    code: 'WH-EC1',
+    companyId: 'company-1',
+    companyName: 'RDX Global',
+    address: '250 Logistics Way, Newark, NJ 07102, USA',
+    contactName: 'Sarah Jenkins',
+    contactPhone: '+1 (555) 200-1001',
+    defaultCarrier: 'FedEx',
+    active: true,
+    createdAt: '2026-01-01T00:00:00Z'
+  },
+  {
+    id: 'warehouse-2',
+    name: 'Amsterdam Fulfillment Hub',
+    code: 'WH-AMS1',
+    companyId: 'company-2',
+    companyName: 'RDX Europe',
+    address: 'Schipholweg 20, 1171 PK Badhoevedorp, Netherlands',
+    contactName: 'Lucas Hayes',
+    contactPhone: '+31 20 555 0202',
+    defaultCarrier: 'DHL',
+    active: true,
+    createdAt: '2026-01-01T00:00:00Z'
+  },
+  {
+    id: 'warehouse-3',
+    name: 'Singapore Regional Warehouse',
+    code: 'WH-SIN1',
+    companyId: 'company-3',
+    companyName: 'RDX Asia Pacific',
+    address: '9 Changi South Street 3, Singapore 486361',
+    contactName: 'Emma Watson',
+    contactPhone: '+65 6555 0303',
+    defaultCarrier: 'UPS',
+    active: true,
+    createdAt: '2026-01-01T00:00:00Z'
+  },
+  {
+    id: 'warehouse-4',
+    name: 'Dallas Central Depot',
+    code: 'WH-DAL1',
+    companyId: 'company-4',
+    companyName: 'RDX Distribution',
+    address: '400 Commerce Drive, Dallas, TX 75201, USA',
+    contactName: 'David Miller',
+    contactPhone: '+1 (555) 100-4001',
+    defaultCarrier: 'USPS',
+    active: true,
+    createdAt: '2026-01-01T00:00:00Z'
+  }
+];
+
+export const INITIAL_CUSTOMERS: Customer[] = [
+  {
+    id: 'customer-1',
+    contactName: 'Kenji Takahashi',
+    companyName: 'Nippon Systems International',
+    email: 'kenji.takahashi@nippon-systems.example',
+    phone: '+81 3-5555-0110',
+    shippingAddress: '2-1-1 Marunouchi, Chiyoda-ku, Tokyo 100-0005, Japan',
+    billingSameAsShipping: true,
+    accountCode: 'CUST-1001',
+    tags: ['Standard'],
+    notes: '',
+    active: true,
+    createdAt: '2026-01-05T00:00:00Z'
+  },
+  {
+    id: 'customer-2',
+    contactName: 'Victoria Hastings',
+    companyName: 'RDX Financial Partners',
+    email: 'victoria.hastings@rdxfinancial.example',
+    phone: '+1 (555) 300-2002',
+    shippingAddress: '88 Wall Street, New York, NY 10005, USA',
+    billingSameAsShipping: true,
+    accountCode: 'CUST-1002',
+    tags: ['VIP'],
+    notes: 'Long-standing enterprise account — priority handling.',
+    active: true,
+    createdAt: '2026-01-06T00:00:00Z'
+  },
+  {
+    id: 'customer-3',
+    contactName: 'Chloe Bennett',
+    companyName: 'Apex Fintech Solutions',
+    email: 'chloe.bennett@apexfintech.example',
+    phone: '+1 (555) 300-2003',
+    shippingAddress: '500 Fintech Plaza, San Francisco, CA 94105, USA',
+    billingSameAsShipping: false,
+    billingAddress: '500 Fintech Plaza, Suite 900, San Francisco, CA 94105, USA',
+    accountCode: 'CUST-1003',
+    tags: ['Standard'],
+    notes: '',
+    active: true,
+    createdAt: '2026-01-07T00:00:00Z'
   }
 ];
 

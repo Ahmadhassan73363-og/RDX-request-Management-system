@@ -15,7 +15,10 @@ import {
   ChevronRight,
   SendHorizontal,
   Truck,
-  LogOut
+  LogOut,
+  Building2,
+  Warehouse as WarehouseIcon,
+  Users
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { useSystem } from '../../context/SystemContext';
@@ -81,6 +84,21 @@ export const Sidebar: React.FC<SidebarProps> = ({ currentPath, onNavigate, onClo
       label: 'Team Management',
       path: '/teams',
       icon: <Users2 className="w-4 h-4" />,
+    },
+    {
+      label: 'Companies',
+      path: '/companies',
+      icon: <Building2 className="w-4 h-4" />,
+    },
+    {
+      label: 'Warehouses',
+      path: '/warehouses',
+      icon: <WarehouseIcon className="w-4 h-4" />,
+    },
+    {
+      label: 'Customers',
+      path: '/customers',
+      icon: <Users className="w-4 h-4" />,
     },
     {
       label: 'Budget Tracking',

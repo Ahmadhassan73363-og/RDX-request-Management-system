@@ -86,6 +86,14 @@ export interface RequestRecord {
   // Multiple SKU Breakdown
   skuItems?: SkuItem[];
 
+  // Company / Warehouse / Customer linkage — customerName/customerCompany above are
+  // snapshotted from the linked Customer record (if any) at submission time.
+  companyId?: string;
+  companyName?: string;
+  warehouseId?: string;
+  warehouseName?: string;
+  customerId?: string;
+
   // Dynamic Form Linkage
   formId?: string;
   formTitle?: string;

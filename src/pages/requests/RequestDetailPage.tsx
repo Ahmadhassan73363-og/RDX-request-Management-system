@@ -40,6 +40,8 @@ interface RequestDetailPageProps {
 export const RequestDetailPage: React.FC<RequestDetailPageProps> = ({ requestId, onBack, onUpdate }) => {
   const { currentUser, hasPermission } = useAuth();
   const request = dataService.getRequestById(requestId);
+  const linkedWarehouse = request?.warehouseId ? dataService.getWarehouses().find(w => w.id === request.warehouseId) : undefined;
+  const linkedCustomer = request?.customerId ? dataService.getCustomers().find(c => c.id === request.customerId) : undefined;
   const realTeam = request ? dataService.getTeams().find(t => t.id === request.teamId) : null;
   // The request's team can be deleted out from under it (its team_id gets nulled
   // server-side). Fall back to a zeroed placeholder instead of treating this
@@ -709,6 +711,32 @@ export const RequestDetailPage: React.FC<RequestDetailPageProps> = ({ requestId,
                 <span className="text-muted-foreground">Team:</span>
                 <span className="text-foreground font-semibold">{request.teamName}</span>
               </div>
+              {request.companyName && (
+                <div className="flex items-center justify-between">
+                  <span className="text-muted-foreground">Issuing Company:</span>
+                  <span className="text-foreground font-semibold">{request.companyName}</span>
+                </div>
+              )}
+              {(linkedWarehouse || request.warehouseName) && (
+                <div className="flex items-center justify-between gap-4">
+                  <span className="text-muted-foreground shrink-0">Ships From:</span>
+                  <span className="text-foreground font-semibold text-right">
+                    {linkedWarehouse?.name || request.warehouseName}
+                    {linkedWarehouse?.address && (
+                      <span className="block text-[10px] text-muted-foreground font-normal">{linkedWarehouse.address}</span>
+                    )}
+                  </span>
+                </div>
+              )}
+              {linkedCustomer && (
+                <div className="flex items-center justify-between gap-4">
+                  <span className="text-muted-foreground shrink-0">Ships To:</span>
+                  <span className="text-foreground font-semibold text-right">
+                    {linkedCustomer.contactName}
+                    <span className="block text-[10px] text-muted-foreground font-normal">{linkedCustomer.shippingAddress}</span>
+                  </span>
+                </div>
+              )}
               <div className="flex items-center justify-between">
                 <span className="text-muted-foreground">Delivery Deadline:</span>
                 <span className="font-mono text-foreground font-semibold">

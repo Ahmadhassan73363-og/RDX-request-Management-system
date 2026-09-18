@@ -13,6 +13,9 @@ DROP TABLE IF EXISTS teams CASCADE;
 DROP TABLE IF EXISTS roles CASCADE;
 DROP TABLE IF EXISTS settings CASCADE;
 DROP TABLE IF EXISTS additional_fields CASCADE;
+DROP TABLE IF EXISTS warehouses CASCADE;
+DROP TABLE IF EXISTS customers CASCADE;
+DROP TABLE IF EXISTS companies CASCADE;
 
 CREATE TABLE roles (
   id VARCHAR(50) PRIMARY KEY,
@@ -21,6 +24,53 @@ CREATE TABLE roles (
   is_system BOOLEAN DEFAULT false,
   color VARCHAR(50),
   permissions JSONB DEFAULT '[]'::jsonb,
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE companies (
+  id VARCHAR(50) PRIMARY KEY,
+  name VARCHAR(150) NOT NULL,
+  short_code VARCHAR(20),
+  legal_name VARCHAR(200),
+  logo_url VARCHAR(500),
+  address TEXT,
+  tax_id VARCHAR(100),
+  contact_name VARCHAR(150),
+  contact_email VARCHAR(150),
+  contact_phone VARCHAR(50),
+  default_currency VARCHAR(10) DEFAULT 'USD',
+  color VARCHAR(20),
+  active BOOLEAN DEFAULT true,
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE warehouses (
+  id VARCHAR(50) PRIMARY KEY,
+  name VARCHAR(150) NOT NULL,
+  code VARCHAR(20),
+  company_id VARCHAR(50) REFERENCES companies(id) ON DELETE SET NULL,
+  company_name VARCHAR(150),
+  address TEXT,
+  contact_name VARCHAR(150),
+  contact_phone VARCHAR(50),
+  default_carrier VARCHAR(100),
+  active BOOLEAN DEFAULT true,
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE customers (
+  id VARCHAR(50) PRIMARY KEY,
+  contact_name VARCHAR(150) NOT NULL,
+  company_name VARCHAR(150),
+  email VARCHAR(150),
+  phone VARCHAR(50),
+  shipping_address TEXT,
+  billing_same_as_shipping BOOLEAN DEFAULT true,
+  billing_address TEXT,
+  account_code VARCHAR(50),
+  tags JSONB DEFAULT '[]'::jsonb,
+  notes TEXT,
+  active BOOLEAN DEFAULT true,
   created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 
@@ -99,6 +149,11 @@ CREATE TABLE requests (
   sample_sku_total NUMERIC(15, 2) DEFAULT 0,
   sku_items JSONB DEFAULT '[]'::jsonb,
   custom_fields JSONB DEFAULT '{}'::jsonb,
+  company_id VARCHAR(50) REFERENCES companies(id) ON DELETE SET NULL,
+  company_name VARCHAR(150),
+  warehouse_id VARCHAR(50) REFERENCES warehouses(id) ON DELETE SET NULL,
+  warehouse_name VARCHAR(150),
+  customer_id VARCHAR(50) REFERENCES customers(id) ON DELETE SET NULL,
   form_id VARCHAR(50),
   form_title VARCHAR(200),
   shipment_status VARCHAR(50) DEFAULT 'pending',

@@ -25,7 +25,16 @@ export type AuditActionType =
   | 'SHIPMENT_STATUS_UPDATE'
   | 'SETTINGS_UPDATE'
   | 'FIELD_CREATE'
-  | 'FIELD_DELETE';
+  | 'FIELD_DELETE'
+  | 'COMPANY_CREATE'
+  | 'COMPANY_UPDATE'
+  | 'COMPANY_DELETE'
+  | 'WAREHOUSE_CREATE'
+  | 'WAREHOUSE_UPDATE'
+  | 'WAREHOUSE_DELETE'
+  | 'CUSTOMER_CREATE'
+  | 'CUSTOMER_UPDATE'
+  | 'CUSTOMER_DELETE';
 
 export interface AuditLog {
   id: string;
@@ -34,7 +43,7 @@ export interface AuditLog {
   userEmail: string;
   userRole: string;
   action: AuditActionType;
-  entityType: 'User' | 'Role' | 'Team' | 'Budget' | 'Form' | 'RequestRecord' | 'SystemSettings' | 'AdditionalField';
+  entityType: 'User' | 'Role' | 'Team' | 'Budget' | 'Form' | 'RequestRecord' | 'SystemSettings' | 'AdditionalField' | 'Company' | 'Warehouse' | 'Customer';
   entityId: string;
   description: string;
   oldValue?: string; // JSON or descriptive string

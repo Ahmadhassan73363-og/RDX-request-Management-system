@@ -10,11 +10,17 @@ import {
   INITIAL_AUDIT_LOGS,
   INITIAL_SETTINGS,
   INITIAL_BUDGET_TRANSACTIONS,
-  INITIAL_ADDITIONAL_FIELDS
+  INITIAL_ADDITIONAL_FIELDS,
+  INITIAL_COMPANIES,
+  INITIAL_WAREHOUSES,
+  INITIAL_CUSTOMERS
 } from './mockData';
 import { Role, Permission } from '../types/rbac';
 import { User } from '../types/user';
 import { Team } from '../types/team';
+import { Company } from '../types/company';
+import { Warehouse } from '../types/warehouse';
+import { Customer } from '../types/customer';
 import { RequestRecord, RequestStatus, RequestPriority, SkuItem, ShipmentStatus, AdditionalField } from '../types/request';
 import { FormSchema, FormAssignment, FormSubmission } from '../types/form';
 import { BudgetTransaction, BudgetActionType } from '../types/budget';
@@ -79,6 +85,9 @@ class DataService {
       if (Array.isArray(data.auditLogs) && data.auditLogs.length) storage.set('audit_logs', data.auditLogs);
       if (data.settings) storage.set('settings', data.settings);
       if (Array.isArray(data.additionalFields)) storage.set('additional_fields', data.additionalFields);
+      if (Array.isArray(data.companies) && data.companies.length) storage.set('companies', data.companies);
+      if (Array.isArray(data.warehouses) && data.warehouses.length) storage.set('warehouses', data.warehouses);
+      if (Array.isArray(data.customers) && data.customers.length) storage.set('customers', data.customers);
       console.log('✨ Synchronized state with local PostgreSQL database (rdx_request_db)');
     } catch (err) {
       console.warn('Database sync skipped (offline or server starting)', err);
@@ -99,6 +108,9 @@ class DataService {
       storage.set('settings', INITIAL_SETTINGS);
       storage.set('budget_transactions', INITIAL_BUDGET_TRANSACTIONS);
       storage.set('additional_fields', INITIAL_ADDITIONAL_FIELDS);
+      storage.set('companies', INITIAL_COMPANIES);
+      storage.set('warehouses', INITIAL_WAREHOUSES);
+      storage.set('customers', INITIAL_CUSTOMERS);
       storage.set('current_user_id', 'usr-1'); // Alexander Vance (Super Admin)
       storage.set('initialized', true);
     }
@@ -421,6 +433,166 @@ class DataService {
     const role = roles.find(r => r.id === user.roleId || r.name === user.roleName);
     if (!role) return false;
     return role.permissions.includes(permission);
+  }
+
+  // --- Companies (our side — issuing entities) ---
+  public getCompanies(): Company[] {
+    return storage.get<Company[]>('companies', INITIAL_COMPANIES);
+  }
+
+  public saveCompany(companyData: Partial<Company> & { name: string }, actor: User): Company {
+    const companies = this.getCompanies();
+    let saved: Company;
+    if (companyData.id) {
+      const idx = companies.findIndex(c => c.id === companyData.id);
+      const old = companies[idx];
+      saved = { ...old, ...companyData };
+      companies[idx] = saved;
+      this.logAudit('COMPANY_UPDATE', 'Company', saved.id, `Updated company ${saved.name}`, actor, JSON.stringify(old), JSON.stringify(saved));
+    } else {
+      saved = {
+        id: 'company-' + Date.now(),
+        name: companyData.name,
+        shortCode: companyData.shortCode || companyData.name.substring(0, 4).toUpperCase(),
+        legalName: companyData.legalName || companyData.name,
+        logoUrl: companyData.logoUrl,
+        address: companyData.address || '',
+        taxId: companyData.taxId || '',
+        contactName: companyData.contactName || '',
+        contactEmail: companyData.contactEmail || '',
+        contactPhone: companyData.contactPhone || '',
+        defaultCurrency: companyData.defaultCurrency || 'USD',
+        color: companyData.color || '#3b82f6',
+        active: companyData.active ?? true,
+        createdAt: new Date().toISOString()
+      };
+      companies.push(saved);
+      this.logAudit('COMPANY_CREATE', 'Company', saved.id, `Created company ${saved.name}`, actor, undefined, JSON.stringify(saved));
+    }
+    storage.set('companies', companies);
+    api.saveCompany(saved).catch(() => {});
+    return saved;
+  }
+
+  public deleteCompany(companyId: string, actor: User) {
+    const companies = this.getCompanies();
+    const company = companies.find(c => c.id === companyId);
+    if (!company) throw new Error('Company not found');
+
+    const dependentWarehouses = this.getWarehouses().filter(w => w.companyId === companyId);
+    const dependentRequests = this.getRequests().filter(r => r.companyId === companyId);
+    if (dependentWarehouses.length > 0 || dependentRequests.length > 0) {
+      throw new Error(`Cannot delete ${company.name}: ${dependentWarehouses.length} warehouse(s) and ${dependentRequests.length} request(s) are still linked to it. Reassign or resolve them first.`);
+    }
+
+    storage.set('companies', companies.filter(c => c.id !== companyId));
+    api.deleteCompany(companyId).catch(() => {});
+    this.logAudit('COMPANY_DELETE', 'Company', companyId, `Deleted company ${company.name}`, actor);
+  }
+
+  // --- Warehouses (dispatch locations, linked to a Company) ---
+  public getWarehouses(): Warehouse[] {
+    return storage.get<Warehouse[]>('warehouses', INITIAL_WAREHOUSES);
+  }
+
+  public saveWarehouse(warehouseData: Partial<Warehouse> & { name: string; companyId: string }, actor: User): Warehouse {
+    const warehouses = this.getWarehouses();
+    const company = this.getCompanies().find(c => c.id === warehouseData.companyId);
+    let saved: Warehouse;
+    if (warehouseData.id) {
+      const idx = warehouses.findIndex(w => w.id === warehouseData.id);
+      const old = warehouses[idx];
+      saved = { ...old, ...warehouseData, companyName: company?.name || old.companyName };
+      warehouses[idx] = saved;
+      this.logAudit('WAREHOUSE_UPDATE', 'Warehouse', saved.id, `Updated warehouse ${saved.name}`, actor, JSON.stringify(old), JSON.stringify(saved));
+    } else {
+      saved = {
+        id: 'warehouse-' + Date.now(),
+        name: warehouseData.name,
+        code: warehouseData.code || warehouseData.name.substring(0, 4).toUpperCase(),
+        companyId: warehouseData.companyId,
+        companyName: company?.name || '',
+        address: warehouseData.address || '',
+        contactName: warehouseData.contactName || '',
+        contactPhone: warehouseData.contactPhone || '',
+        defaultCarrier: warehouseData.defaultCarrier,
+        active: warehouseData.active ?? true,
+        createdAt: new Date().toISOString()
+      };
+      warehouses.push(saved);
+      this.logAudit('WAREHOUSE_CREATE', 'Warehouse', saved.id, `Created warehouse ${saved.name}`, actor, undefined, JSON.stringify(saved));
+    }
+    storage.set('warehouses', warehouses);
+    api.saveWarehouse(saved).catch(() => {});
+    return saved;
+  }
+
+  public deleteWarehouse(warehouseId: string, actor: User) {
+    const warehouses = this.getWarehouses();
+    const warehouse = warehouses.find(w => w.id === warehouseId);
+    if (!warehouse) throw new Error('Warehouse not found');
+
+    const dependentRequests = this.getRequests().filter(r => r.warehouseId === warehouseId);
+    if (dependentRequests.length > 0) {
+      throw new Error(`Cannot delete ${warehouse.name}: ${dependentRequests.length} request(s) are still linked to it. Reassign or resolve them first.`);
+    }
+
+    storage.set('warehouses', warehouses.filter(w => w.id !== warehouseId));
+    api.deleteWarehouse(warehouseId).catch(() => {});
+    this.logAudit('WAREHOUSE_DELETE', 'Warehouse', warehouseId, `Deleted warehouse ${warehouse.name}`, actor);
+  }
+
+  // --- Customers (receiver side) ---
+  public getCustomers(): Customer[] {
+    return storage.get<Customer[]>('customers', INITIAL_CUSTOMERS);
+  }
+
+  public saveCustomer(customerData: Partial<Customer> & { contactName: string }, actor: User): Customer {
+    const customers = this.getCustomers();
+    let saved: Customer;
+    if (customerData.id) {
+      const idx = customers.findIndex(c => c.id === customerData.id);
+      const old = customers[idx];
+      saved = { ...old, ...customerData };
+      customers[idx] = saved;
+      this.logAudit('CUSTOMER_UPDATE', 'Customer', saved.id, `Updated customer ${saved.contactName}`, actor, JSON.stringify(old), JSON.stringify(saved));
+    } else {
+      saved = {
+        id: 'customer-' + Date.now(),
+        contactName: customerData.contactName,
+        companyName: customerData.companyName || '',
+        email: customerData.email || '',
+        phone: customerData.phone || '',
+        shippingAddress: customerData.shippingAddress || '',
+        billingSameAsShipping: customerData.billingSameAsShipping ?? true,
+        billingAddress: customerData.billingAddress,
+        accountCode: customerData.accountCode || 'CUST-' + Date.now().toString().slice(-6),
+        tags: customerData.tags || ['Standard'],
+        notes: customerData.notes || '',
+        active: customerData.active ?? true,
+        createdAt: new Date().toISOString()
+      };
+      customers.push(saved);
+      this.logAudit('CUSTOMER_CREATE', 'Customer', saved.id, `Created customer ${saved.contactName}`, actor, undefined, JSON.stringify(saved));
+    }
+    storage.set('customers', customers);
+    api.saveCustomer(saved).catch(() => {});
+    return saved;
+  }
+
+  public deleteCustomer(customerId: string, actor: User) {
+    const customers = this.getCustomers();
+    const customer = customers.find(c => c.id === customerId);
+    if (!customer) throw new Error('Customer not found');
+
+    const dependentRequests = this.getRequests().filter(r => r.customerId === customerId);
+    if (dependentRequests.length > 0) {
+      throw new Error(`Cannot delete ${customer.contactName}: ${dependentRequests.length} request(s) are still linked to this customer. Reassign or resolve them first.`);
+    }
+
+    storage.set('customers', customers.filter(c => c.id !== customerId));
+    api.deleteCustomer(customerId).catch(() => {});
+    this.logAudit('CUSTOMER_DELETE', 'Customer', customerId, `Deleted customer ${customer.contactName}`, actor);
   }
 
   // --- Teams & Budgets ---

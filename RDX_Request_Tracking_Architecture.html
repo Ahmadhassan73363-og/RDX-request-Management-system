@@ -1,0 +1,1044 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>RDX Request Tracking Utility — Executive Architecture &amp; Workflow</title>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap');
+
+    @page {
+      size: A4 portrait;
+      margin: 10mm 12mm 10mm 12mm;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      color: #1e293b;
+      background: #ffffff;
+      line-height: 1.45;
+      font-size: 10.5pt;
+      -webkit-print-color-adjust: exact;
+      print-color-adjust: exact;
+    }
+
+    /* Page container: exact A4 height budgeting */
+    .page {
+      width: 100%;
+      page-break-after: always;
+      break-after: page;
+      position: relative;
+      display: flex;
+      flex-direction: column;
+      justify-content: flex-start;
+      min-height: 270mm;
+      padding-bottom: 4mm;
+    }
+
+    .page:last-child {
+      page-break-after: avoid;
+      break-after: avoid;
+    }
+
+    /* Running Header & Footer for Print */
+    .doc-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      border-bottom: 2px solid #e2e8f0;
+      padding-bottom: 6px;
+      margin-bottom: 12px;
+    }
+
+    .doc-header-logo {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .logo-badge {
+      background: #4f46e5;
+      color: white;
+      font-weight: 800;
+      font-size: 11px;
+      padding: 2px 7px;
+      border-radius: 6px;
+      letter-spacing: 0.5px;
+    }
+
+    .doc-header-title {
+      font-size: 11.5px;
+      font-weight: 700;
+      color: #0f172a;
+    }
+
+    .doc-header-meta {
+      font-size: 9.5px;
+      color: #64748b;
+      font-weight: 600;
+    }
+
+    .doc-footer {
+      margin-top: auto;
+      border-top: 1px solid #e2e8f0;
+      padding-top: 6px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      font-size: 8.5px;
+      color: #94a3b8;
+    }
+
+    /* Cover / Hero Block */
+    .hero-banner {
+      background: linear-gradient(135deg, #1e1b4b 0%, #312e81 55%, #4338ca 100%);
+      color: white;
+      padding: 20px 24px;
+      border-radius: 12px;
+      margin-bottom: 12px;
+    }
+
+    .hero-tag {
+      display: inline-block;
+      background: rgba(255, 255, 255, 0.15);
+      border: 1px solid rgba(255, 255, 255, 0.25);
+      color: #e0e7ff;
+      padding: 2px 9px;
+      border-radius: 999px;
+      font-size: 9.5px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      margin-bottom: 8px;
+    }
+
+    .hero-title {
+      font-size: 22px;
+      font-weight: 800;
+      letter-spacing: -0.5px;
+      line-height: 1.2;
+      margin-bottom: 6px;
+    }
+
+    .hero-subtitle {
+      font-size: 11.5px;
+      color: #c7d2fe;
+      line-height: 1.45;
+    }
+
+    /* KPI Highlights */
+    .kpi-grid {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 8px;
+      margin-bottom: 12px;
+    }
+
+    .kpi-card {
+      background: #f8fafc;
+      border: 1px solid #e2e8f0;
+      border-radius: 8px;
+      padding: 10px;
+      display: flex;
+      flex-direction: column;
+      gap: 3px;
+    }
+
+    .kpi-label {
+      font-size: 8.5px;
+      text-transform: uppercase;
+      font-weight: 700;
+      color: #64748b;
+      letter-spacing: 0.5px;
+    }
+
+    .kpi-value {
+      font-size: 16px;
+      font-weight: 800;
+      color: #0f172a;
+    }
+
+    .kpi-sub {
+      font-size: 9.5px;
+      color: #64748b;
+      line-height: 1.3;
+    }
+
+    /* Section Headers */
+    .section-header-box {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin-bottom: 8px;
+    }
+
+    .section-num-badge {
+      width: 24px;
+      height: 24px;
+      border-radius: 6px;
+      background: #eef2ff;
+      color: #4f46e5;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-weight: 800;
+      font-size: 12px;
+    }
+
+    .section-heading-text {
+      font-size: 15px;
+      font-weight: 800;
+      color: #0f172a;
+      letter-spacing: -0.2px;
+    }
+
+    .section-subtext {
+      font-size: 10px;
+      color: #64748b;
+    }
+
+    /* Exactly like user screenshot */
+    .callout-box {
+      background: #eef2ff;
+      border-left: 4px solid #4f46e5;
+      padding: 10px 14px;
+      border-radius: 0 10px 10px 0;
+      margin-bottom: 10px;
+      font-size: 10.5px;
+      color: #1e1b4b;
+      line-height: 1.5;
+    }
+
+    .callout-box strong {
+      color: #3730a3;
+    }
+
+    .sub-lead-text {
+      font-size: 11px;
+      color: #475569;
+      margin-bottom: 8px;
+    }
+
+    /* 3 Problem Cards (Exact from screenshot) */
+    .problem-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 8px;
+      margin-bottom: 10px;
+    }
+
+    .problem-card {
+      background: #fff1f2;
+      border: 1px solid #fecdd3;
+      padding: 10px 12px;
+      border-radius: 10px;
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+
+    .problem-title {
+      font-weight: 700;
+      font-size: 11px;
+      color: #be123c;
+      display: flex;
+      align-items: center;
+      gap: 4px;
+    }
+
+    .problem-desc {
+      font-size: 9.5px;
+      color: #4c0519;
+      line-height: 1.4;
+    }
+
+    /* Green Solution Box (Exact from screenshot) */
+    .solution-box {
+      background: #f0fdf4;
+      border: 1px solid #bbf7d0;
+      padding: 10px 14px;
+      border-radius: 10px;
+      margin-bottom: 12px;
+    }
+
+    .solution-title {
+      font-weight: 700;
+      font-size: 11.5px;
+      color: #15803d;
+      margin-bottom: 4px;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .solution-desc {
+      font-size: 10px;
+      color: #14532d;
+      line-height: 1.45;
+    }
+
+    /* SVG Diagrams */
+    .svg-diagram-card {
+      width: 100%;
+      background: #fafafa;
+      border: 1px solid #e2e8f0;
+      border-radius: 10px;
+      padding: 8px 10px;
+      margin-bottom: 10px;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+    }
+
+    .svg-diagram-card svg {
+      max-width: 100%;
+      height: auto;
+    }
+
+    /* Info Cards Grids */
+    .card-grid-3 {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 8px;
+      margin-bottom: 10px;
+    }
+
+    .card-grid-4 {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 8px;
+      margin-bottom: 10px;
+    }
+
+    .card-grid-2 {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+      margin-bottom: 10px;
+    }
+
+    .info-card {
+      background: #ffffff;
+      border: 1px solid #e2e8f0;
+      border-radius: 8px;
+      padding: 10px;
+    }
+
+    .info-card-header {
+      font-size: 11px;
+      font-weight: 700;
+      color: #0f172a;
+      margin-bottom: 4px;
+      display: flex;
+      align-items: center;
+      gap: 5px;
+    }
+
+    .info-card-body {
+      font-size: 9.5px;
+      color: #475569;
+      line-height: 1.4;
+    }
+
+    /* Data Table */
+    .data-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 9.5px;
+      margin-bottom: 10px;
+      border: 1px solid #e2e8f0;
+      border-radius: 8px;
+      overflow: hidden;
+    }
+
+    .data-table th {
+      background: #f1f5f9;
+      padding: 7px 9px;
+      text-align: left;
+      font-weight: 700;
+      color: #334155;
+      border-bottom: 1px solid #cbd5e1;
+    }
+
+    .data-table td {
+      padding: 6px 9px;
+      border-bottom: 1px solid #e2e8f0;
+      color: #334155;
+      vertical-align: middle;
+    }
+
+    .data-table tr:last-child td {
+      border-bottom: none;
+    }
+
+    .badge {
+      display: inline-block;
+      padding: 2px 6px;
+      border-radius: 4px;
+      font-size: 8.5px;
+      font-weight: 700;
+      font-family: 'JetBrains Mono', monospace;
+    }
+
+    .badge-blue { background: #e0f2fe; color: #0369a1; }
+    .badge-green { background: #dcfce7; color: #15803d; }
+    .badge-purple { background: #f3e8ff; color: #7e22ce; }
+    .badge-amber { background: #fef3c7; color: #b45309; }
+  </style>
+</head>
+<body>
+
+  <!-- ================= PAGE 1 ================= -->
+  <div class="page">
+    <div class="doc-header">
+      <div class="doc-header-logo">
+        <span class="logo-badge">RDX</span>
+        <span class="doc-header-title">RDX Request Tracking Utility &bull; Executive Guide</span>
+      </div>
+      <div class="doc-header-meta">Ref: RDX-SPEC-2026-V1</div>
+    </div>
+
+    <!-- Hero Banner -->
+    <div class="hero-banner">
+      <span class="hero-tag">Executive Engineering Documentation</span>
+      <h1 class="hero-title">RDX Request Management &amp; Tracking Utility</h1>
+      <p class="hero-subtitle">A unified corporate solution governing sample allocations, free-of-cost items, 4-tier digital approvals, real-time departmental budgets, and end-to-end warehouse shipment fulfillment.</p>
+    </div>
+
+    <!-- Highlights / KPIs -->
+    <div class="kpi-grid">
+      <div class="kpi-card">
+        <span class="kpi-label">Governance Chain</span>
+        <span class="kpi-value">4 Stages</span>
+        <span class="kpi-sub">Exec &rarr; Mgr &rarr; HOD &rarr; President</span>
+      </div>
+      <div class="kpi-card">
+        <span class="kpi-label">Budget Precision</span>
+        <span class="kpi-value">100% Real-Time</span>
+        <span class="kpi-sub">Auto-deductions &amp; balance locks</span>
+      </div>
+      <div class="kpi-card">
+        <span class="kpi-label">Logistics Tracking</span>
+        <span class="kpi-value">4 Kanban States</span>
+        <span class="kpi-sub">Ready &rarr; In Process &rarr; Dispatched &rarr; Delivered</span>
+      </div>
+      <div class="kpi-card">
+        <span class="kpi-label">User Experience</span>
+        <span class="kpi-value">0ms Latency</span>
+        <span class="kpi-sub">Optimistic local cache + cloud sync</span>
+      </div>
+    </div>
+
+    <!-- Section 1 (Exact wording from user's loved screenshot) -->
+    <div class="section-header-box">
+      <div class="section-num-badge">1</div>
+      <div>
+        <div class="section-heading-text">What is the Request Tracking Utility?</div>
+        <div class="section-subtext">Plain-English summary of the business problem and how this software solves it</div>
+      </div>
+    </div>
+
+    <div class="callout-box">
+      <strong>Core Purpose:</strong> Companies lose thousands of dollars each month when team members give away free product samples, client gifts, or promotional items without budget checks or manager approvals. <strong>RDX Request Tracking Utility</strong> automates this entire lifecycle so that no sample leaves the warehouse without authorized signatures and recorded budget deductions.
+    </div>
+
+    <div class="sub-lead-text">Before this system, requests were handled through scattered emails, paper slips, or spreadsheets. This created 3 major bottlenecks:</div>
+
+    <!-- 3 Problem Cards -->
+    <div class="problem-grid">
+      <div class="problem-card">
+        <div class="problem-title">❌ Problem 1: Budget Leakage</div>
+        <div class="problem-desc">Teams gave away samples without knowing if their department still had budget left, causing unplanned deficits.</div>
+      </div>
+      <div class="problem-card">
+        <div class="problem-title">❌ Problem 2: Lost Approvals</div>
+        <div class="problem-desc">Requests got stuck in executive inboxes for weeks with zero tracking or visibility into who was holding them up.</div>
+      </div>
+      <div class="problem-card">
+        <div class="problem-title">❌ Problem 3: Warehouse Blindspot</div>
+        <div class="problem-desc">Once approved, no one knew if warehouse staff actually packed, dispatched, or delivered the items to the client.</div>
+      </div>
+    </div>
+
+    <!-- The Green Solution Box -->
+    <div class="solution-box">
+      <div class="solution-title">✅ The RDX Solution:</div>
+      <div class="solution-desc">
+        A single connected dashboard where <strong>Sales/Staff create requests</strong> &rarr; <strong>Executives digitally sign</strong> in a strict 4-step sequence &rarr; <strong>Budgets auto-deduct</strong> &rarr; <strong>Warehouse staff fulfill shipments</strong> on a real-time Kanban board &rarr; <strong>Every detail is audited with timestamps and IP stamps</strong>.
+      </div>
+    </div>
+
+    <!-- High-level Visual Flow -->
+    <div class="svg-diagram-card">
+      <svg width="680" height="75" viewBox="0 0 680 75" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <rect x="5" y="10" width="120" height="52" rx="7" fill="#EEF2FF" stroke="#6366F1" stroke-width="1.5"/>
+        <text x="65" y="32" font-family="'Plus Jakarta Sans', sans-serif" font-size="10" font-weight="700" fill="#312E81" text-anchor="middle">1. Request Draft</text>
+        <text x="65" y="47" font-family="'Plus Jakarta Sans', sans-serif" font-size="8.5" fill="#4338CA" text-anchor="middle">SKUs &amp; Pricing</text>
+        <path d="M130 36 L148 36" stroke="#4F46E5" stroke-width="1.5" stroke-dasharray="2 2" marker-end="url(#arrow)"/>
+
+        <rect x="150" y="10" width="130" height="52" rx="7" fill="#F3E8FF" stroke="#9333EA" stroke-width="1.5"/>
+        <text x="215" y="32" font-family="'Plus Jakarta Sans', sans-serif" font-size="10" font-weight="700" fill="#581C87" text-anchor="middle">2. 4-Stage Approval</text>
+        <text x="215" y="47" font-family="'Plus Jakarta Sans', sans-serif" font-size="8.5" fill="#7E22CE" text-anchor="middle">Digital Signatures</text>
+        <path d="M285 36 L303 36" stroke="#4F46E5" stroke-width="1.5" marker-end="url(#arrow)"/>
+
+        <rect x="305" y="10" width="125" height="52" rx="7" fill="#FEF3C7" stroke="#D97706" stroke-width="1.5"/>
+        <text x="367" y="32" font-family="'Plus Jakarta Sans', sans-serif" font-size="10" font-weight="700" fill="#78350F" text-anchor="middle">3. Auto Deduction</text>
+        <text x="367" y="47" font-family="'Plus Jakarta Sans', sans-serif" font-size="8.5" fill="#B45309" text-anchor="middle">Balance Ledger</text>
+        <path d="M435 36 L453 36" stroke="#4F46E5" stroke-width="1.5" marker-end="url(#arrow)"/>
+
+        <rect x="455" y="10" width="125" height="52" rx="7" fill="#E0F2FE" stroke="#0284C7" stroke-width="1.5"/>
+        <text x="517" y="32" font-family="'Plus Jakarta Sans', sans-serif" font-size="10" font-weight="700" fill="#0C4A6E" text-anchor="middle">4. Warehouse QA</text>
+        <text x="517" y="47" font-family="'Plus Jakarta Sans', sans-serif" font-size="8.5" fill="#0369A1" text-anchor="middle">Pack &amp; Dispatch</text>
+        <path d="M585 36 L603 36" stroke="#4F46E5" stroke-width="1.5" marker-end="url(#arrow)"/>
+
+        <rect x="605" y="10" width="70" height="52" rx="7" fill="#DCFCE7" stroke="#16A34A" stroke-width="1.5"/>
+        <text x="640" y="32" font-family="'Plus Jakarta Sans', sans-serif" font-size="10" font-weight="700" fill="#14532D" text-anchor="middle">5. Delivery</text>
+        <text x="640" y="47" font-family="'Plus Jakarta Sans', sans-serif" font-size="8.5" fill="#15803D" text-anchor="middle">Closed &bull; Safe</text>
+
+        <defs>
+          <marker id="arrow" viewBox="0 0 10 10" refX="6" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+            <path d="M 0 1 L 7 5 L 0 9 z" fill="#4F46E5"/>
+          </marker>
+        </defs>
+      </svg>
+    </div>
+
+    <div class="doc-footer">
+      <span>RDX Request Tracking Utility &bull; Executive Guide</span>
+      <span>Page 1 of 4</span>
+    </div>
+  </div>
+
+
+  <!-- ================= PAGE 2 ================= -->
+  <div class="page">
+    <div class="doc-header">
+      <div class="doc-header-logo">
+        <span class="logo-badge">RDX</span>
+        <span class="doc-header-title">2. System Architecture: How It Works Behind the Scenes</span>
+      </div>
+      <div class="doc-header-meta">Ref: RDX-SPEC-2026-V1</div>
+    </div>
+
+    <div class="section-header-box">
+      <div class="section-num-badge">2</div>
+      <div>
+        <div class="section-heading-text">The 3-Tier Architecture in Plain English</div>
+        <div class="section-subtext">How the web browser, application server, and cloud database talk to each other</div>
+      </div>
+    </div>
+
+    <!-- Architecture Diagram SVG -->
+    <div class="svg-diagram-card">
+      <svg width="680" height="185" viewBox="0 0 680 185" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <!-- Tier 1 -->
+        <rect x="10" y="10" width="200" height="165" rx="9" fill="#F8FAFC" stroke="#CBD5E1" stroke-width="1.5"/>
+        <rect x="20" y="18" width="180" height="22" rx="5" fill="#4F46E5"/>
+        <text x="110" y="33" font-family="'Plus Jakarta Sans', sans-serif" font-size="10" font-weight="700" fill="#FFFFFF" text-anchor="middle">1. USER SCREEN (Browser)</text>
+
+        <rect x="22" y="47" width="176" height="30" rx="5" fill="#FFFFFF" stroke="#E2E8F0"/>
+        <text x="110" y="62" font-family="'Plus Jakarta Sans', sans-serif" font-size="9" font-weight="700" fill="#1E293B" text-anchor="middle">React 19 Interactive Pages</text>
+        <text x="110" y="72" font-family="'Plus Jakarta Sans', sans-serif" font-size="7.5" fill="#64748B" text-anchor="middle">Dashboard, Approvals, Shipments</text>
+
+        <rect x="22" y="82" width="176" height="30" rx="5" fill="#EEF2FF" stroke="#C7D2FE"/>
+        <text x="110" y="97" font-family="'Plus Jakarta Sans', sans-serif" font-size="9" font-weight="700" fill="#312E81" text-anchor="middle">dataService.ts (Orchestrator)</text>
+        <text x="110" y="107" font-family="'Plus Jakarta Sans', sans-serif" font-size="7.5" fill="#4338CA" text-anchor="middle">Calculates totals &amp; checks budgets</text>
+
+        <rect x="22" y="117" width="176" height="28" rx="5" fill="#FFFFFF" stroke="#E2E8F0"/>
+        <text x="110" y="131" font-family="'Plus Jakarta Sans', sans-serif" font-size="8.5" font-weight="700" fill="#15803D" text-anchor="middle">Optimistic LocalStorage Cache</text>
+        <text x="110" y="140" font-family="'Plus Jakarta Sans', sans-serif" font-size="7.5" fill="#16A34A" text-anchor="middle">Instant 0ms Screen Updates</text>
+
+        <rect x="22" y="149" width="176" height="20" rx="4" fill="#FFFFFF" stroke="#E2E8F0"/>
+        <text x="110" y="163" font-family="'Plus Jakarta Sans', sans-serif" font-size="8" font-weight="600" fill="#475569" text-anchor="middle">apiService.ts (Silent HTTP Sync)</text>
+
+        <!-- Arrow 1 -->
+        <path d="M210 92 L245 92" stroke="#4F46E5" stroke-width="2" marker-end="url(#arrow)"/>
+        <text x="227" y="86" font-family="'Plus Jakarta Sans', sans-serif" font-size="8" font-weight="700" fill="#4F46E5" text-anchor="middle">REST</text>
+
+        <!-- Tier 2 -->
+        <rect x="245" y="10" width="200" height="165" rx="9" fill="#F8FAFC" stroke="#CBD5E1" stroke-width="1.5"/>
+        <rect x="255" y="18" width="180" height="22" rx="5" fill="#0F766E"/>
+        <text x="345" y="33" font-family="'Plus Jakarta Sans', sans-serif" font-size="10" font-weight="700" fill="#FFFFFF" text-anchor="middle">2. API SERVER (Express 5)</text>
+
+        <rect x="257" y="47" width="176" height="34" rx="5" fill="#FFFFFF" stroke="#E2E8F0"/>
+        <text x="345" y="63" font-family="'Plus Jakarta Sans', sans-serif" font-size="9" font-weight="700" fill="#1E293B" text-anchor="middle">Traffic Director (app.js)</text>
+        <text x="345" y="74" font-family="'Plus Jakarta Sans', sans-serif" font-size="7.5" fill="#64748B" text-anchor="middle">Validates logins &amp; manages requests</text>
+
+        <rect x="257" y="87" width="176" height="34" rx="5" fill="#F0FDFA" stroke="#99F6E4"/>
+        <text x="345" y="103" font-family="'Plus Jakarta Sans', sans-serif" font-size="9" font-weight="700" fill="#115E59" text-anchor="middle">Auto Database Health Guard</text>
+        <text x="345" y="114" font-family="'Plus Jakarta Sans', sans-serif" font-size="7.5" fill="#0D9488" text-anchor="middle">initDb.js keeps tables up to date</text>
+
+        <rect x="257" y="127" width="176" height="34" rx="5" fill="#FFFFFF" stroke="#E2E8F0"/>
+        <text x="345" y="143" font-family="'Plus Jakarta Sans', sans-serif" font-size="9" font-weight="700" fill="#1E293B" text-anchor="middle">Smart Connection Pool (db.js)</text>
+        <text x="345" y="154" font-family="'Plus Jakarta Sans', sans-serif" font-size="7.5" fill="#64748B" text-anchor="middle">Connects safely to cloud Neon PG</text>
+
+        <!-- Arrow 2 -->
+        <path d="M445 92 L480 92" stroke="#0F766E" stroke-width="2" marker-end="url(#arrow2)"/>
+        <text x="462" y="86" font-family="'Plus Jakarta Sans', sans-serif" font-size="8" font-weight="700" fill="#0F766E" text-anchor="middle">SQL</text>
+
+        <!-- Tier 3 -->
+        <rect x="480" y="10" width="190" height="165" rx="9" fill="#F8FAFC" stroke="#CBD5E1" stroke-width="1.5"/>
+        <rect x="490" y="18" width="170" height="22" rx="5" fill="#0369A1"/>
+        <text x="575" y="33" font-family="'Plus Jakarta Sans', sans-serif" font-size="10" font-weight="700" fill="#FFFFFF" text-anchor="middle">3. DATABASE (PostgreSQL)</text>
+
+        <rect x="492" y="47" width="166" height="27" rx="5" fill="#FFFFFF" stroke="#E2E8F0"/>
+        <text x="575" y="61" font-family="'Plus Jakarta Sans', sans-serif" font-size="8.5" font-weight="700" fill="#0C4A6E" text-anchor="middle">requests &amp; items</text>
+        <text x="575" y="70" font-family="'Plus Jakarta Sans', sans-serif" font-size="7.5" fill="#64748B" text-anchor="middle">Client orders &amp; status history</text>
+
+        <rect x="492" y="78" width="166" height="27" rx="5" fill="#FFFFFF" stroke="#E2E8F0"/>
+        <text x="575" y="92" font-family="'Plus Jakarta Sans', sans-serif" font-size="8.5" font-weight="700" fill="#0C4A6E" text-anchor="middle">teams &amp; budget ledger</text>
+        <text x="575" y="101" font-family="'Plus Jakarta Sans', sans-serif" font-size="7.5" fill="#64748B" text-anchor="middle">Department spending &amp; receipts</text>
+
+        <rect x="492" y="109" width="166" height="27" rx="5" fill="#FFFFFF" stroke="#E2E8F0"/>
+        <text x="575" y="123" font-family="'Plus Jakarta Sans', sans-serif" font-size="8.5" font-weight="700" fill="#0C4A6E" text-anchor="middle">forms &amp; questionnaires</text>
+        <text x="575" y="132" font-family="'Plus Jakarta Sans', sans-serif" font-size="7.5" fill="#64748B" text-anchor="middle">No-code custom fields</text>
+
+        <rect x="492" y="140" width="166" height="27" rx="5" fill="#FFFFFF" stroke="#E2E8F0"/>
+        <text x="575" y="154" font-family="'Plus Jakarta Sans', sans-serif" font-size="8.5" font-weight="700" fill="#0C4A6E" text-anchor="middle">audit flight-recorder</text>
+        <text x="575" y="163" font-family="'Plus Jakarta Sans', sans-serif" font-size="7.5" fill="#64748B" text-anchor="middle">Who did what, when &amp; IP stamp</text>
+
+        <defs>
+          <marker id="arrow2" viewBox="0 0 10 10" refX="6" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+            <path d="M 0 1 L 7 5 L 0 9 z" fill="#0F766E"/>
+          </marker>
+        </defs>
+      </svg>
+    </div>
+
+    <!-- Tech Stack Cards -->
+    <div class="card-grid-3">
+      <div class="info-card">
+        <div class="info-card-header"><span class="badge badge-purple">FRONTEND</span> React 19 + Vite</div>
+        <div class="info-card-body">
+          &bull; 12 unified modules with modern dark/light mode.<br/>
+          &bull; Interactive touch/mouse digital signature pad.<br/>
+          &bull; Instant 1-click Excel report export via ExcelJS.<br/>
+          &bull; Zero screen freezing or loading delays.
+        </div>
+      </div>
+
+      <div class="info-card">
+        <div class="info-card-header"><span class="badge badge-green">SERVER</span> Node.js + Express 5</div>
+        <div class="info-card-body">
+          &bull; Single fast bootstrap route (<code>/api/bootstrap</code>).<br/>
+          &bull; Automatic table creation &amp; non-destructive checks.<br/>
+          &bull; Deployed effortlessly on Vercel Serverless.<br/>
+          &bull; Protects database from connection exhaustion.
+        </div>
+      </div>
+
+      <div class="info-card">
+        <div class="info-card-header"><span class="badge badge-blue">DATABASE</span> PostgreSQL Cloud</div>
+        <div class="info-card-body">
+          &bull; 12 relational tables with foreign key safety.<br/>
+          &bull; JSONB columns for dynamic custom forms.<br/>
+          &bull; Unalterable financial ledger of debits &amp; credits.<br/>
+          &bull; Built-in backups and automated failover.
+        </div>
+      </div>
+    </div>
+
+    <!-- Dataflow Explanation -->
+    <div class="callout-box">
+      <strong>How Zero-Lag Works:</strong> When you click "Approve", the button turns green in <strong>0 milliseconds</strong> because it updates your browser memory first. It then quietly informs the cloud database in the background. Even if your internet flickers, your work is preserved safely.
+    </div>
+
+    <table class="data-table">
+      <thead>
+        <tr>
+          <th>Step</th>
+          <th>What the User Does</th>
+          <th>What the System Does</th>
+          <th>Speed</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><strong>1. User Action</strong></td>
+          <td>Signs name &amp; clicks "Approve"</td>
+          <td>Captures digital signature stroke vector &amp; timestamp</td>
+          <td>Instant</td>
+        </tr>
+        <tr>
+          <td><strong>2. Budget Guard</strong></td>
+          <td>Approving the request</td>
+          <td>Verifies if department still has enough remaining money</td>
+          <td>&lt; 1 millisecond</td>
+        </tr>
+        <tr>
+          <td><strong>3. Screen Update</strong></td>
+          <td>Sees green success badge</td>
+          <td>Saves directly into browser cache with zero waiting</td>
+          <td>0ms (Real-time)</td>
+        </tr>
+        <tr>
+          <td><strong>4. Cloud Save</strong></td>
+          <td>Continues working freely</td>
+          <td>Sends quiet background update to PostgreSQL database</td>
+          <td>Background async</td>
+        </tr>
+        <tr>
+          <td><strong>5. Ledger Stamp</strong></td>
+          <td>Audit trail updated</td>
+          <td>Writes permanent debit receipt with balance before &amp; after</td>
+          <td>Permanent record</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <div class="doc-footer">
+      <span>RDX Request Tracking Utility &bull; Executive Guide</span>
+      <span>Page 2 of 4</span>
+    </div>
+  </div>
+
+
+  <!-- ================= PAGE 3 ================= -->
+  <div class="page">
+    <div class="doc-header">
+      <div class="doc-header-logo">
+        <span class="logo-badge">RDX</span>
+        <span class="doc-header-title">3. The 4-Stage Approval Chain &amp; Automatic Budgeting</span>
+      </div>
+      <div class="doc-header-meta">Ref: RDX-SPEC-2026-V1</div>
+    </div>
+
+    <div class="section-header-box">
+      <div class="section-num-badge">3</div>
+      <div>
+        <div class="section-heading-text">The 4-Stage Approval Journey</div>
+        <div class="section-subtext">How a sample request travels through the corporate hierarchy</div>
+      </div>
+    </div>
+
+    <!-- 4 Stages Cards -->
+    <div class="card-grid-4">
+      <div class="info-card" style="border-top: 3px solid #6366F1;">
+        <div class="info-card-header"><span class="badge badge-purple">STAGE 1</span> Executive</div>
+        <div class="info-card-body">
+          <strong>Commercial Check:</strong><br/>
+          Reviews why the sample is needed, client business history, and specific items requested.
+        </div>
+      </div>
+
+      <div class="info-card" style="border-top: 3px solid #3B82F6;">
+        <div class="info-card-header"><span class="badge badge-blue">STAGE 2</span> Manager</div>
+        <div class="info-card-body">
+          <strong>Team Alignment:</strong><br/>
+          Confirms operational necessity, sales pipeline priority, and required delivery target dates.
+        </div>
+      </div>
+
+      <div class="info-card" style="border-top: 3px solid #8B5CF6;">
+        <div class="info-card-header"><span class="badge badge-purple">STAGE 3</span> HOD</div>
+        <div class="info-card-body">
+          <strong>Budget Authority:</strong><br/>
+          Validates that the department has enough remaining money and adheres to gift caps.
+        </div>
+      </div>
+
+      <div class="info-card" style="border-top: 3px solid #10B981;">
+        <div class="info-card-header"><span class="badge badge-green">STAGE 4</span> President</div>
+        <div class="info-card-body">
+          <strong>Final Sign-Off:</strong><br/>
+          Grants final corporate green light. Auto-deducts team budget and queues shipment.
+        </div>
+      </div>
+    </div>
+
+    <!-- Flowchart SVG -->
+    <div class="svg-diagram-card">
+      <svg width="680" height="145" viewBox="0 0 680 145" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <circle cx="35" cy="50" r="18" fill="#4F46E5"/>
+        <text x="35" y="54" font-family="'Plus Jakarta Sans', sans-serif" font-size="8.5" font-weight="700" fill="#FFFFFF" text-anchor="middle">DRAFT</text>
+        <path d="M53 50 L85 50" stroke="#4F46E5" stroke-width="1.5" marker-end="url(#arrow)"/>
+
+        <!-- Decision: Budget check -->
+        <polygon points="120,22 155,50 120,78 85,50" fill="#FEF3C7" stroke="#D97706" stroke-width="1.5"/>
+        <text x="120" y="48" font-family="'Plus Jakarta Sans', sans-serif" font-size="8" font-weight="700" fill="#78350F" text-anchor="middle">Budget</text>
+        <text x="120" y="58" font-family="'Plus Jakarta Sans', sans-serif" font-size="8" font-weight="700" fill="#78350F" text-anchor="middle">Sufficient?</text>
+
+        <!-- No Budget path -->
+        <path d="M120 78 L120 110 L160 110" stroke="#DC2626" stroke-width="1.5" marker-end="url(#arrowRed)"/>
+        <rect x="160" y="98" width="105" height="25" rx="5" fill="#FEE2E2" stroke="#EF4444"/>
+        <text x="212" y="114" font-family="'Plus Jakarta Sans', sans-serif" font-size="8" font-weight="700" fill="#991B1B" text-anchor="middle">Blocked / Need Override</text>
+
+        <!-- Yes Budget path -->
+        <path d="M155 50 L180 50" stroke="#16A34A" stroke-width="1.5" marker-end="url(#arrowGreen)"/>
+        <text x="167" y="44" font-family="'Plus Jakarta Sans', sans-serif" font-size="7.5" font-weight="700" fill="#16A34A">YES</text>
+
+        <!-- Stage 1 -->
+        <rect x="180" y="35" width="90" height="30" rx="5" fill="#FFFFFF" stroke="#6366F1" stroke-width="1.5"/>
+        <text x="225" y="49" font-family="'Plus Jakarta Sans', sans-serif" font-size="8.5" font-weight="700" fill="#312E81" text-anchor="middle">1. Executive</text>
+        <text x="225" y="58" font-family="'Plus Jakarta Sans', sans-serif" font-size="7" fill="#6366F1" text-anchor="middle">Digital Sign-off</text>
+        <path d="M270 50 L295 50" stroke="#4F46E5" stroke-width="1.5" marker-end="url(#arrow)"/>
+
+        <!-- Stage 2 -->
+        <rect x="295" y="35" width="85" height="30" rx="5" fill="#FFFFFF" stroke="#3B82F6" stroke-width="1.5"/>
+        <text x="337" y="49" font-family="'Plus Jakarta Sans', sans-serif" font-size="8.5" font-weight="700" fill="#1E3A8A" text-anchor="middle">2. Manager</text>
+        <text x="337" y="58" font-family="'Plus Jakarta Sans', sans-serif" font-size="7" fill="#3B82F6" text-anchor="middle">Digital Sign-off</text>
+        <path d="M380 50 L405 50" stroke="#4F46E5" stroke-width="1.5" marker-end="url(#arrow)"/>
+
+        <!-- Stage 3 -->
+        <rect x="405" y="35" width="80" height="30" rx="5" fill="#FFFFFF" stroke="#8B5CF6" stroke-width="1.5"/>
+        <text x="445" y="49" font-family="'Plus Jakarta Sans', sans-serif" font-size="8.5" font-weight="700" fill="#581C87" text-anchor="middle">3. HOD</text>
+        <text x="445" y="58" font-family="'Plus Jakarta Sans', sans-serif" font-size="7" fill="#8B5CF6" text-anchor="middle">Digital Sign-off</text>
+        <path d="M485 50 L510 50" stroke="#4F46E5" stroke-width="1.5" marker-end="url(#arrow)"/>
+
+        <!-- Stage 4 -->
+        <rect x="510" y="35" width="85" height="30" rx="5" fill="#FFFFFF" stroke="#10B981" stroke-width="1.5"/>
+        <text x="552" y="49" font-family="'Plus Jakarta Sans', sans-serif" font-size="8.5" font-weight="700" fill="#065F46" text-anchor="middle">4. President</text>
+        <text x="552" y="58" font-family="'Plus Jakarta Sans', sans-serif" font-size="7" fill="#10B981" text-anchor="middle">Final Sign-off</text>
+        <path d="M595 50 L615 50" stroke="#16A34A" stroke-width="1.5" marker-end="url(#arrowGreen)"/>
+
+        <!-- Final Box -->
+        <rect x="615" y="27" width="60" height="46" rx="6" fill="#DCFCE7" stroke="#16A34A" stroke-width="1.5"/>
+        <text x="645" y="45" font-family="'Plus Jakarta Sans', sans-serif" font-size="8" font-weight="800" fill="#14532D" text-anchor="middle">APPROVED</text>
+        <text x="645" y="57" font-family="'Plus Jakarta Sans', sans-serif" font-size="7" fill="#15803D" text-anchor="middle">&amp; CHARGED</text>
+
+        <!-- Rejections line -->
+        <path d="M225 65 L225 85 L400 85" stroke="#94A3B8" stroke-width="1" stroke-dasharray="2 2"/>
+        <path d="M337 65 L337 85 L400 85" stroke="#94A3B8" stroke-width="1" stroke-dasharray="2 2"/>
+        <path d="M445 65 L445 85 L400 85" stroke="#94A3B8" stroke-width="1" stroke-dasharray="2 2"/>
+        <path d="M552 65 L552 85 L400 85" stroke="#94A3B8" stroke-width="1" stroke-dasharray="2 2"/>
+        <rect x="360" y="76" width="80" height="18" rx="4" fill="#F1F5F9" stroke="#94A3B8"/>
+        <text x="400" y="88" font-family="'Plus Jakarta Sans', sans-serif" font-size="7.5" fill="#475569" text-anchor="middle">Reject with Reason</text>
+
+        <defs>
+          <marker id="arrowRed" viewBox="0 0 10 10" refX="6" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+            <path d="M 0 1 L 7 5 L 0 9 z" fill="#DC2626"/>
+          </marker>
+          <marker id="arrowGreen" viewBox="0 0 10 10" refX="6" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+            <path d="M 0 1 L 7 5 L 0 9 z" fill="#16A34A"/>
+          </marker>
+        </defs>
+      </svg>
+    </div>
+
+    <!-- Automatic Financial Execution -->
+    <div class="card-grid-2">
+      <div class="info-card">
+        <div class="info-card-header"><span class="badge badge-blue">CALCULATION</span> How Pricing Is Calculated</div>
+        <div class="info-card-body">
+          &bull; <strong>Request Value:</strong> Total retail value of sample items.<br/>
+          &bull; <strong>Formula:</strong> $\text{Budget Amount} = \text{Value} \times (1 - \frac{\text{Discount}}{100})$<br/>
+          &bull; <strong>Hard Stop:</strong> Blocks submission if department money is low.<br/>
+          &bull; <strong>Override Flag:</strong> Super Admins can override, flagged for audit.
+        </div>
+      </div>
+
+      <div class="info-card">
+        <div class="info-card-header"><span class="badge badge-green">EXECUTION</span> Instant Budget Deduction</div>
+        <div class="info-card-body">
+          &bull; <strong>Instant Debit:</strong> When President signs, money is auto-deducted.<br/>
+          &bull; <strong>Receipt Created:</strong> Writes a new row in <code>budget_transactions</code>.<br/>
+          &bull; <strong>Total Clarity:</strong> Records <code>balance_before</code> and <code>balance_after</code>.<br/>
+          &bull; <strong>Zero Disputes:</strong> Links exact order number to the deduction.
+        </div>
+      </div>
+    </div>
+
+    <table class="data-table">
+      <thead>
+        <tr>
+          <th>Transaction ID</th>
+          <th>Team / Department</th>
+          <th>Transaction Type</th>
+          <th>Deduction</th>
+          <th>Balance Before</th>
+          <th>Balance After</th>
+          <th>Authorized By</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><code>TXN-2026-081</code></td>
+          <td>Enterprise Sales</td>
+          <td><span class="badge badge-amber">REQUEST_DEDUCTION</span></td>
+          <td><strong>$1,250.00</strong></td>
+          <td>$48,500.00</td>
+          <td>$47,250.00</td>
+          <td>President (Final Sign-off)</td>
+        </tr>
+        <tr>
+          <td><code>TXN-2026-082</code></td>
+          <td>Marketing EMEA</td>
+          <td><span class="badge badge-amber">REQUEST_DEDUCTION</span></td>
+          <td><strong>$640.00</strong></td>
+          <td>$14,200.00</td>
+          <td>$13,560.00</td>
+          <td>President (Final Sign-off)</td>
+        </tr>
+        <tr>
+          <td><code>TXN-2026-083</code></td>
+          <td>Global Accounts</td>
+          <td><span class="badge badge-purple">OVERRIDE_DEDUCTION</span></td>
+          <td><strong>$3,100.00</strong></td>
+          <td>$1,500.00</td>
+          <td>-$1,600.00</td>
+          <td>Super Admin (Sanctioned)</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <div class="doc-footer">
+      <span>RDX Request Tracking Utility &bull; Executive Guide</span>
+      <span>Page 3 of 4</span>
+    </div>
+  </div>
+
+
+  <!-- ================= PAGE 4 ================= -->
+  <div class="page">
+    <div class="doc-header">
+      <div class="doc-header-logo">
+        <span class="logo-badge">RDX</span>
+        <span class="doc-header-title">4. Warehouse Fulfillment, Data Tables &amp; Benefits</span>
+      </div>
+      <div class="doc-header-meta">Ref: RDX-SPEC-2026-V1</div>
+    </div>
+
+    <div class="section-header-box">
+      <div class="section-num-badge">4</div>
+      <div>
+        <div class="section-heading-text">Warehouse Fulfillment &amp; Courier Tracking</div>
+        <div class="section-subtext">Real-time Kanban logistics pipeline after request approval</div>
+      </div>
+    </div>
+
+    <div class="callout-box">
+      <strong>Closing the Loop:</strong> Approving a sample is only half the job. The <strong>Shipment Tracking</strong> Kanban board gives warehouse staff and sales agents full visibility into packaging, courier pickup, and confirmed customer delivery.
+    </div>
+
+    <!-- 4 Shipment Kanban States -->
+    <div class="card-grid-4">
+      <div class="info-card" style="background:#F0FDF4; border:1px solid #BBF7D0;">
+        <div class="info-card-header" style="color:#14532D;">🟢 1. Approved – Ready</div>
+        <div class="info-card-body" style="color:#166534;">
+          President signed off. Order is queued for warehouse stock picking and allocation.
+        </div>
+      </div>
+
+      <div class="info-card" style="background:#FFFBEB; border:1px solid #FDE68A;">
+        <div class="info-card-header" style="color:#78350F;">📦 2. In Process</div>
+        <div class="info-card-body" style="color:#92400E;">
+          Warehouse team is packing, labeling shipping boxes, and inspecting sample quality.
+        </div>
+      </div>
+
+      <div class="info-card" style="background:#EFF6FF; border:1px solid #BFDBFE;">
+        <div class="info-card-header" style="color:#1E3A8A;">🚚 3. Dispatched</div>
+        <div class="info-card-body" style="color:#1E40AF;">
+          Package handed over to courier. Waybill number and tracking notes are attached.
+        </div>
+      </div>
+
+      <div class="info-card" style="background:#F8FAFC; border:1px solid #CBD5E1;">
+        <div class="info-card-header" style="color:#0F172A;">✅ 4. Delivered</div>
+        <div class="info-card-body" style="color:#334155;">
+          Delivery confirmed by client or recipient. System records timestamp and closes request.
+        </div>
+      </div>
+    </div>
+
+    <!-- The Database Tables in Plain English -->
+    <div class="section-header-box" style="margin-top: 6px;">
+      <div class="section-num-badge" style="background:#e0f2fe; color:#0369a1;">5</div>
+      <div>
+        <div class="section-heading-text">Core Database Tables (In Plain English)</div>
+      </div>
+    </div>
+
+    <table class="data-table">
+      <thead>
+        <tr>
+          <th>Table Name</th>
+          <th>What It Stores in Plain English</th>
+          <th>Why It Matters</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><span class="badge badge-blue">requests</span></td>
+          <td>Every sample/gift order created, items requested, and client name</td>
+          <td>Main record tracking the order from draft to delivered</td>
+        </tr>
+        <tr>
+          <td><span class="badge badge-green">teams</span></td>
+          <td>Each corporate department, their total budget, and spent money</td>
+          <td>Enforces financial spending caps so teams never overspend</td>
+        </tr>
+        <tr>
+          <td><span class="badge badge-amber">budget_transactions</span></td>
+          <td>The digital receipt book for every single dollar spent or refunded</td>
+          <td>Immutable audit proof of balance before and after each approval</td>
+        </tr>
+        <tr>
+          <td><span class="badge badge-purple">users &amp; roles</span></td>
+          <td>Employees and who is allowed to sign off at each stage</td>
+          <td>Ensures only designated managers can sign off at their level</td>
+        </tr>
+        <tr>
+          <td><span class="badge badge-blue">forms &amp; assignments</span></td>
+          <td>Custom questionnaires created without writing code</td>
+          <td>Allows different departments to ask tailored questions on orders</td>
+        </tr>
+        <tr>
+          <td><span class="badge badge-amber">audit_logs</span></td>
+          <td>The flight recorder: who did what, when, and from which IP</td>
+          <td>Complete legal audit trail for internal security and compliance</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <!-- Key Executive Benefits Grid -->
+    <div class="card-grid-4">
+      <div class="info-card" style="background:#F8FAFC;">
+        <div style="font-size:16px; margin-bottom:2px;">🎯</div>
+        <div style="font-weight:700; font-size:10.5px; color:#0F172A; margin-bottom:2px;">Zero Budget Waste</div>
+        <div style="font-size:9px; color:#64748B; line-height:1.35;">Mathematical spending caps prevent unauthorized sample gifts.</div>
+      </div>
+
+      <div class="info-card" style="background:#F8FAFC;">
+        <div style="font-size:16px; margin-bottom:2px;">⏱️</div>
+        <div style="font-weight:700; font-size:10.5px; color:#0F172A; margin-bottom:2px;">5x Faster Approvals</div>
+        <div style="font-size:9px; color:#64748B; line-height:1.35;">Managers sign securely on phones or laptops in under 30 seconds.</div>
+      </div>
+
+      <div class="info-card" style="background:#F8FAFC;">
+        <div style="font-size:16px; margin-bottom:2px;">🛡️</div>
+        <div style="font-weight:700; font-size:10.5px; color:#0F172A; margin-bottom:2px;">100% Audit Ready</div>
+        <div style="font-size:9px; color:#64748B; line-height:1.35;">Digital signatures, IP stamps, and balance receipts for every order.</div>
+      </div>
+
+      <div class="info-card" style="background:#F8FAFC;">
+        <div style="font-size:16px; margin-bottom:2px;">📊</div>
+        <div style="font-weight:700; font-size:10.5px; color:#0F172A; margin-bottom:2px;">1-Click Excel Reports</div>
+        <div style="font-size:9px; color:#64748B; line-height:1.35;">Download complete financial and dispatch spreadsheets instantly.</div>
+      </div>
+    </div>
+
+    <!-- Sign-off block -->
+    <div style="margin-top: 6px; background: #f8fafc; border: 1px dashed #cbd5e1; border-radius: 6px; padding: 8px 12px; display: flex; justify-content: space-between; align-items: center; font-size: 9px; color: #475569;">
+      <div>
+        <strong>Document Status:</strong> Approved &bull; <strong>Classification:</strong> Internal Corporate Specification
+      </div>
+      <div>
+        <strong>Release:</strong> Production V1.0 &bull; <strong>Prepared For:</strong> Senior Leadership Review
+      </div>
+    </div>
+
+    <div class="doc-footer">
+      <span>RDX Request Tracking Utility &bull; Executive Guide</span>
+      <span>Page 4 of 4</span>
+    </div>
+  </div>
+
+</body>
+</html>

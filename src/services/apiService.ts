@@ -62,6 +62,30 @@ export const api = {
     return request('deleteRole', `/api/roles/${roleId}`, { method: 'DELETE' });
   },
 
+  saveCompany(company: any) {
+    return request('saveCompany', '/api/companies', { method: 'POST', ...jsonBody(company) });
+  },
+
+  deleteCompany(companyId: string) {
+    return request('deleteCompany', `/api/companies/${companyId}`, { method: 'DELETE' });
+  },
+
+  saveWarehouse(warehouse: any) {
+    return request('saveWarehouse', '/api/warehouses', { method: 'POST', ...jsonBody(warehouse) });
+  },
+
+  deleteWarehouse(warehouseId: string) {
+    return request('deleteWarehouse', `/api/warehouses/${warehouseId}`, { method: 'DELETE' });
+  },
+
+  saveCustomer(customer: any) {
+    return request('saveCustomer', '/api/customers', { method: 'POST', ...jsonBody(customer) });
+  },
+
+  deleteCustomer(customerId: string) {
+    return request('deleteCustomer', `/api/customers/${customerId}`, { method: 'DELETE' });
+  },
+
   saveTeam(team: any) {
     const method = team.id ? 'PUT' : 'POST';
     const url = team.id ? `/api/teams/${team.id}` : '/api/teams';

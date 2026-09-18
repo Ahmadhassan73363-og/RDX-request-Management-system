@@ -17,7 +17,8 @@ import {
   ChevronRight,
   RefreshCw,
   LayoutGrid,
-  List
+  List,
+  MapPin
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { dataService } from '../../services/dataService';
@@ -435,6 +436,12 @@ export const ShipmentTrackingPage: React.FC<ShipmentTrackingPageProps> = ({ onNa
                               <span>Team: {req.teamName}</span>
                               <span>{req.requestCategory}</span>
                             </div>
+                            {req.warehouseName && (
+                              <div className="flex items-center gap-1 text-[10px] text-muted-foreground pt-1 border-t border-border/50">
+                                <MapPin className="w-3 h-3 shrink-0" />
+                                <span className="truncate">Ships from: {req.warehouseName}</span>
+                              </div>
+                            )}
                           </div>
 
                           {/* Shipment Manager Action Trigger */}

@@ -36,6 +36,21 @@ interface SkuRow {
 export const NewRequestModal: React.FC<NewRequestModalProps> = ({ isOpen, onClose, onSuccess }) => {
   const { currentUser } = useAuth();
   const teams = dataService.getTeams().filter(t => t.active);
+  const companies = dataService.getCompanies().filter(c => c.active);
+  const allWarehouses = dataService.getWarehouses().filter(w => w.active);
+  const customers = dataService.getCustomers().filter(c => c.active);
+
+  // Company / Warehouse / Customer linkage
+  const [companyId, setCompanyId] = useState(companies[0]?.id || '');
+  const warehousesForCompany = allWarehouses.filter(w => w.companyId === companyId);
+  const [warehouseId, setWarehouseId] = useState(warehousesForCompany[0]?.id || '');
+  const [customerId, setCustomerId] = useState('');
+
+  const handleCompanyChange = (newCompanyId: string) => {
+    setCompanyId(newCompanyId);
+    const nextWarehouses = allWarehouses.filter(w => w.companyId === newCompanyId);
+    setWarehouseId(nextWarehouses[0]?.id || '');
+  };
 
   // Forms available from Form Builder
   const [availableForms, setAvailableForms] = useState<FormSchema[]>(() =>
@@ -70,6 +85,15 @@ export const NewRequestModal: React.FC<NewRequestModalProps> = ({ isOpen, onClos
   const [agentOrTeamName, setAgentOrTeamName] = useState(currentUser.name || '');
   // 4. Business Name
   const [businessName, setBusinessName] = useState('');
+
+  const handleCustomerChange = (newCustomerId: string) => {
+    setCustomerId(newCustomerId);
+    const customer = customers.find(c => c.id === newCustomerId);
+    if (customer) {
+      setBusinessName(customer.companyName);
+    }
+  };
+
   // 5. Type of FOC
   const [typeOfFoc, setTypeOfFoc] = useState('Product Sample / Trial');
   // 6. System Invoice no.
@@ -195,6 +219,20 @@ export const NewRequestModal: React.FC<NewRequestModalProps> = ({ isOpen, onClos
     e.preventDefault();
     setError('');
 
+    const selectedCompany = companies.find(c => c.id === companyId);
+    const selectedWarehouse = allWarehouses.find(w => w.id === warehouseId);
+    const selectedCustomer = customers.find(c => c.id === customerId);
+    // Spread last in each payload below so a linked Customer's real contact/company
+    // name wins over the free-text Agent/Business Name fields.
+    const linkageFields = {
+      companyId: companyId || undefined,
+      companyName: selectedCompany?.name,
+      warehouseId: warehouseId || undefined,
+      warehouseName: selectedWarehouse?.name,
+      customerId: customerId || undefined,
+      ...(selectedCustomer ? { customerName: selectedCustomer.contactName, customerCompany: selectedCustomer.companyName } : {})
+    };
+
     // If using the default standard form:
     if (isDefaultSampleForm) {
       if (!department.trim() || !agentOrTeamName.trim() || !businessName.trim() || !typeOfFoc.trim()) {
@@ -257,7 +295,8 @@ export const NewRequestModal: React.FC<NewRequestModalProps> = ({ isOpen, onClos
             teamId,
             reason: reason.trim() || `FOC request for ${businessName} - SKUs: ${primarySku} (Total Qty: ${totalSkuQty})`,
             priority,
-            attachments: []
+            attachments: [],
+            ...linkageFields
           },
           currentUser
         );
@@ -357,7 +396,8 @@ export const NewRequestModal: React.FC<NewRequestModalProps> = ({ isOpen, onClos
             teamId,
             reason: mappedReason || reason.trim() || `Submitted via custom form "${selectedForm.title}"`,
             priority,
-            attachments: []
+            attachments: [],
+            ...linkageFields
           },
           currentUser
         );
@@ -425,6 +465,38 @@ export const NewRequestModal: React.FC<NewRequestModalProps> = ({ isOpen, onClos
               <span>{selectedForm.description}</span>
             </p>
           )}
+        </div>
+
+        {/* Company / Warehouse / Customer Linkage */}
+        <div className="p-3.5 rounded-xl bg-card border border-border space-y-3">
+          <span className="text-xs font-bold text-foreground block">
+            Company · Warehouse · Customer
+          </span>
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            <Select
+              label="Issuing Company"
+              value={companyId}
+              onChange={(e) => handleCompanyChange(e.target.value)}
+              options={companies.map(c => ({ label: c.name, value: c.id }))}
+            />
+            <Select
+              label="Dispatch Warehouse"
+              value={warehouseId}
+              onChange={(e) => setWarehouseId(e.target.value)}
+              options={warehousesForCompany.map(w => ({ label: w.name, value: w.id }))}
+              helperText={warehousesForCompany.length === 0 ? 'No warehouses for this company' : undefined}
+            />
+            <Select
+              label="Customer (optional)"
+              value={customerId}
+              onChange={(e) => handleCustomerChange(e.target.value)}
+              options={[
+                { label: 'None — enter details manually', value: '' },
+                ...customers.map(c => ({ label: `${c.contactName} (${c.companyName})`, value: c.id }))
+              ]}
+              helperText={customerId ? 'Business Name auto-filled from customer record' : undefined}
+            />
+          </div>
         </div>
 
         {/* 2. DYNAMIC FIELDS OR DEFAULT STANDARD FORM */}

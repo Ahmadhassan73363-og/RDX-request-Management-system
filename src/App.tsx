@@ -10,6 +10,9 @@ import { RequestsListPage } from './pages/requests/RequestsListPage';
 import { ApprovalsQueuePage } from './pages/approvals/ApprovalsQueuePage';
 import { ShipmentTrackingPage } from './pages/shipments/ShipmentTrackingPage';
 import { TeamsListPage } from './pages/teams/TeamsListPage';
+import { CompaniesPage } from './pages/companies/CompaniesPage';
+import { WarehousesPage } from './pages/warehouses/WarehousesPage';
+import { CustomersPage } from './pages/customers/CustomersPage';
 import { BudgetsOverviewPage } from './pages/budgets/BudgetsOverviewPage';
 import { FormsListPage } from './pages/forms/FormsListPage';
 import { FormAssignmentPage } from './pages/forms/FormAssignmentPage';
@@ -85,6 +88,18 @@ const AppContent: React.FC = () => {
 
       {currentPath === '/budgets' && (
         <BudgetsOverviewPage />
+      )}
+
+      {currentPath === '/companies' && (
+        <CompaniesPage />
+      )}
+
+      {currentPath === '/warehouses' && (
+        <WarehousesPage />
+      )}
+
+      {currentPath === '/customers' && (
+        <CustomersPage />
       )}
 
       {currentPath === '/forms' && (

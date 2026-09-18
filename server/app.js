@@ -126,6 +126,62 @@ function mapAdditionalField(row) {
   };
 }
 
+function mapCompany(row) {
+  if (!row) return null;
+  return {
+    id: row.id,
+    name: row.name,
+    shortCode: row.short_code,
+    legalName: row.legal_name,
+    logoUrl: row.logo_url || undefined,
+    address: row.address,
+    taxId: row.tax_id,
+    contactName: row.contact_name,
+    contactEmail: row.contact_email,
+    contactPhone: row.contact_phone,
+    defaultCurrency: row.default_currency,
+    color: row.color || undefined,
+    active: row.active,
+    createdAt: row.created_at
+  };
+}
+
+function mapWarehouse(row) {
+  if (!row) return null;
+  return {
+    id: row.id,
+    name: row.name,
+    code: row.code,
+    companyId: row.company_id,
+    companyName: row.company_name,
+    address: row.address,
+    contactName: row.contact_name,
+    contactPhone: row.contact_phone,
+    defaultCarrier: row.default_carrier || undefined,
+    active: row.active,
+    createdAt: row.created_at
+  };
+}
+
+function mapCustomer(row) {
+  if (!row) return null;
+  return {
+    id: row.id,
+    contactName: row.contact_name,
+    companyName: row.company_name,
+    email: row.email,
+    phone: row.phone,
+    shippingAddress: row.shipping_address,
+    billingSameAsShipping: row.billing_same_as_shipping,
+    billingAddress: row.billing_address || undefined,
+    accountCode: row.account_code,
+    tags: Array.isArray(row.tags) ? row.tags : [],
+    notes: row.notes || '',
+    active: row.active,
+    createdAt: row.created_at
+  };
+}
+
 function mapRequest(row) {
   if (!row) return null;
   return {
@@ -169,6 +225,11 @@ function mapRequest(row) {
     sampleSkuTotal: row.sample_sku_total != null ? parseFloat(row.sample_sku_total) : undefined,
     skuItems: Array.isArray(row.sku_items) ? row.sku_items : (typeof row.sku_items === 'string' ? JSON.parse(row.sku_items) : []),
     customFields: row.custom_fields || {},
+    companyId: row.company_id || undefined,
+    companyName: row.company_name || undefined,
+    warehouseId: row.warehouse_id || undefined,
+    warehouseName: row.warehouse_name || undefined,
+    customerId: row.customer_id || undefined,
     formId: row.form_id || undefined,
     formTitle: row.form_title || undefined,
     // 'pending' is the DB column's default for requests that never entered the shipment
@@ -251,7 +312,10 @@ app.get('/api/bootstrap', async (req, res) => {
       notifsRes,
       logsRes,
       settingsRes,
-      additionalFieldsRes
+      additionalFieldsRes,
+      companiesRes,
+      warehousesRes,
+      customersRes
     ] = await Promise.all([
       pool.query('SELECT * FROM roles ORDER BY name ASC'),
       pool.query('SELECT * FROM users ORDER BY name ASC'),
@@ -264,7 +328,10 @@ app.get('/api/bootstrap', async (req, res) => {
       pool.query('SELECT * FROM notifications ORDER BY created_at DESC LIMIT 50'),
       pool.query('SELECT * FROM audit_logs ORDER BY timestamp DESC LIMIT 200'),
       pool.query('SELECT data FROM settings WHERE id = $1', ['global']),
-      pool.query('SELECT * FROM additional_fields ORDER BY display_order ASC')
+      pool.query('SELECT * FROM additional_fields ORDER BY display_order ASC'),
+      pool.query('SELECT * FROM companies ORDER BY name ASC'),
+      pool.query('SELECT * FROM warehouses ORDER BY name ASC'),
+      pool.query('SELECT * FROM customers ORDER BY contact_name ASC')
     ]);
 
     res.json({
@@ -305,7 +372,10 @@ app.get('/api/bootstrap', async (req, res) => {
         timestamp: r.timestamp
       })),
       settings: settingsRes.rows[0]?.data || null,
-      additionalFields: additionalFieldsRes.rows.map(mapAdditionalField)
+      additionalFields: additionalFieldsRes.rows.map(mapAdditionalField),
+      companies: companiesRes.rows.map(mapCompany),
+      warehouses: warehousesRes.rows.map(mapWarehouse),
+      customers: customersRes.rows.map(mapCustomer)
     });
   } catch (err) {
     console.error('Error fetching bootstrap data', err);
@@ -480,6 +550,207 @@ app.delete('/api/roles/:id', async (req, res) => {
 });
 
 // ----------------------------------------------------
+// COMPANIES
+// ----------------------------------------------------
+app.get('/api/companies', async (req, res) => {
+  try {
+    const result = await pool.query('SELECT * FROM companies ORDER BY name ASC');
+    res.json(result.rows.map(mapCompany));
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/companies', async (req, res) => {
+  const c = req.body;
+  try {
+    const result = await pool.query(
+      `INSERT INTO companies (id, name, short_code, legal_name, logo_url, address, tax_id, contact_name, contact_email, contact_phone, default_currency, color, active)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
+       ON CONFLICT (id) DO UPDATE SET
+         name = COALESCE(EXCLUDED.name, companies.name),
+         short_code = COALESCE(EXCLUDED.short_code, companies.short_code),
+         legal_name = COALESCE(EXCLUDED.legal_name, companies.legal_name),
+         logo_url = COALESCE(EXCLUDED.logo_url, companies.logo_url),
+         address = COALESCE(EXCLUDED.address, companies.address),
+         tax_id = COALESCE(EXCLUDED.tax_id, companies.tax_id),
+         contact_name = COALESCE(EXCLUDED.contact_name, companies.contact_name),
+         contact_email = COALESCE(EXCLUDED.contact_email, companies.contact_email),
+         contact_phone = COALESCE(EXCLUDED.contact_phone, companies.contact_phone),
+         default_currency = COALESCE(EXCLUDED.default_currency, companies.default_currency),
+         color = COALESCE(EXCLUDED.color, companies.color),
+         active = COALESCE(EXCLUDED.active, companies.active)
+       RETURNING *`,
+      [
+        c.id || `company-${Date.now()}`,
+        c.name,
+        c.shortCode || '',
+        c.legalName || '',
+        c.logoUrl || null,
+        c.address || '',
+        c.taxId || '',
+        c.contactName || '',
+        c.contactEmail || '',
+        c.contactPhone || '',
+        c.defaultCurrency || 'USD',
+        c.color || '#3b82f6',
+        c.active ?? true
+      ]
+    );
+    res.status(201).json(mapCompany(result.rows[0]));
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.delete('/api/companies/:id', async (req, res) => {
+  try {
+    const dependents = await pool.query(
+      `SELECT
+         (SELECT COUNT(*) FROM warehouses WHERE company_id = $1) AS warehouse_count,
+         (SELECT COUNT(*) FROM requests WHERE company_id = $1) AS request_count`,
+      [req.params.id]
+    );
+    const { warehouse_count, request_count } = dependents.rows[0];
+    if (Number(warehouse_count) > 0 || Number(request_count) > 0) {
+      return res.status(409).json({ error: `Cannot delete: ${warehouse_count} warehouse(s) and ${request_count} request(s) are still linked to this company.` });
+    }
+    await pool.query('DELETE FROM companies WHERE id = $1', [req.params.id]);
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ----------------------------------------------------
+// WAREHOUSES
+// ----------------------------------------------------
+app.get('/api/warehouses', async (req, res) => {
+  try {
+    const result = await pool.query('SELECT * FROM warehouses ORDER BY name ASC');
+    res.json(result.rows.map(mapWarehouse));
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/warehouses', async (req, res) => {
+  const w = req.body;
+  try {
+    const result = await pool.query(
+      `INSERT INTO warehouses (id, name, code, company_id, company_name, address, contact_name, contact_phone, default_carrier, active)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
+       ON CONFLICT (id) DO UPDATE SET
+         name = COALESCE(EXCLUDED.name, warehouses.name),
+         code = COALESCE(EXCLUDED.code, warehouses.code),
+         company_id = COALESCE(EXCLUDED.company_id, warehouses.company_id),
+         company_name = COALESCE(EXCLUDED.company_name, warehouses.company_name),
+         address = COALESCE(EXCLUDED.address, warehouses.address),
+         contact_name = COALESCE(EXCLUDED.contact_name, warehouses.contact_name),
+         contact_phone = COALESCE(EXCLUDED.contact_phone, warehouses.contact_phone),
+         default_carrier = COALESCE(EXCLUDED.default_carrier, warehouses.default_carrier),
+         active = COALESCE(EXCLUDED.active, warehouses.active)
+       RETURNING *`,
+      [
+        w.id || `warehouse-${Date.now()}`,
+        w.name,
+        w.code || '',
+        w.companyId || null,
+        w.companyName || '',
+        w.address || '',
+        w.contactName || '',
+        w.contactPhone || '',
+        w.defaultCarrier || null,
+        w.active ?? true
+      ]
+    );
+    res.status(201).json(mapWarehouse(result.rows[0]));
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.delete('/api/warehouses/:id', async (req, res) => {
+  try {
+    const dependents = await pool.query('SELECT COUNT(*) FROM requests WHERE warehouse_id = $1', [req.params.id]);
+    const requestCount = Number(dependents.rows[0].count);
+    if (requestCount > 0) {
+      return res.status(409).json({ error: `Cannot delete: ${requestCount} request(s) are still linked to this warehouse.` });
+    }
+    await pool.query('DELETE FROM warehouses WHERE id = $1', [req.params.id]);
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ----------------------------------------------------
+// CUSTOMERS
+// ----------------------------------------------------
+app.get('/api/customers', async (req, res) => {
+  try {
+    const result = await pool.query('SELECT * FROM customers ORDER BY contact_name ASC');
+    res.json(result.rows.map(mapCustomer));
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/customers', async (req, res) => {
+  const c = req.body;
+  try {
+    const result = await pool.query(
+      `INSERT INTO customers (id, contact_name, company_name, email, phone, shipping_address, billing_same_as_shipping, billing_address, account_code, tags, notes, active)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
+       ON CONFLICT (id) DO UPDATE SET
+         contact_name = COALESCE(EXCLUDED.contact_name, customers.contact_name),
+         company_name = COALESCE(EXCLUDED.company_name, customers.company_name),
+         email = COALESCE(EXCLUDED.email, customers.email),
+         phone = COALESCE(EXCLUDED.phone, customers.phone),
+         shipping_address = COALESCE(EXCLUDED.shipping_address, customers.shipping_address),
+         billing_same_as_shipping = COALESCE(EXCLUDED.billing_same_as_shipping, customers.billing_same_as_shipping),
+         billing_address = COALESCE(EXCLUDED.billing_address, customers.billing_address),
+         account_code = COALESCE(EXCLUDED.account_code, customers.account_code),
+         tags = COALESCE(EXCLUDED.tags, customers.tags),
+         notes = COALESCE(EXCLUDED.notes, customers.notes),
+         active = COALESCE(EXCLUDED.active, customers.active)
+       RETURNING *`,
+      [
+        c.id || `customer-${Date.now()}`,
+        c.contactName,
+        c.companyName || '',
+        c.email || '',
+        c.phone || '',
+        c.shippingAddress || '',
+        c.billingSameAsShipping ?? true,
+        c.billingAddress || null,
+        c.accountCode || '',
+        JSON.stringify(c.tags || []),
+        c.notes || '',
+        c.active ?? true
+      ]
+    );
+    res.status(201).json(mapCustomer(result.rows[0]));
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.delete('/api/customers/:id', async (req, res) => {
+  try {
+    const dependents = await pool.query('SELECT COUNT(*) FROM requests WHERE customer_id = $1', [req.params.id]);
+    const requestCount = Number(dependents.rows[0].count);
+    if (requestCount > 0) {
+      return res.status(409).json({ error: `Cannot delete: ${requestCount} request(s) are still linked to this customer.` });
+    }
+    await pool.query('DELETE FROM customers WHERE id = $1', [req.params.id]);
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ----------------------------------------------------
 // TEAMS
 // ----------------------------------------------------
 app.get('/api/teams', async (req, res) => {
@@ -596,6 +867,15 @@ app.post('/api/requests', async (req, res) => {
     const teamId = reqData.teamId
       ? (await pool.query('SELECT id FROM teams WHERE id = $1', [reqData.teamId])).rows[0]?.id || null
       : null;
+    const companyId = reqData.companyId
+      ? (await pool.query('SELECT id FROM companies WHERE id = $1', [reqData.companyId])).rows[0]?.id || null
+      : null;
+    const warehouseId = reqData.warehouseId
+      ? (await pool.query('SELECT id FROM warehouses WHERE id = $1', [reqData.warehouseId])).rows[0]?.id || null
+      : null;
+    const customerId = reqData.customerId
+      ? (await pool.query('SELECT id FROM customers WHERE id = $1', [reqData.customerId])).rows[0]?.id || null
+      : null;
 
     // Disambiguate tracking number to prevent unique constraint crashes
     let trackingNumber = reqData.trackingNumber || `REQ-${new Date().getFullYear()}-${Math.floor(1000 + Math.random() * 9000)}`;
@@ -642,13 +922,14 @@ app.post('/api/requests', async (req, res) => {
          agent_or_team_name, business_name, type_of_foc, system_invoice_no,
          sample_sku, sample_sku_qty, sample_sku_cost_per_unit, sample_sku_total,
          sku_items, shipment_status, custom_fields, form_id, form_title, delivered_at,
+         company_id, company_name, warehouse_id, warehouse_name, customer_id,
          created_at, updated_at
        ) VALUES (
          $1, $2, $3, $4, $5, $6, $7, $8, $9, $10,
          $11, $12, $13, $14, $15, $16, $17, $18, $19, $20,
          $21, $22, $23, $24, $25, $26, $27, $28, $29, $30,
          $31, $32, $33, $34, $35, $36, $37, $38, $39, $40,
-         $41, $42, $43, $44, $45, $46
+         $41, $42, $43, $44, $45, $46, $47, $48, $49, $50, $51
        )
        ON CONFLICT (id) DO UPDATE SET
          customer_name = COALESCE(EXCLUDED.customer_name, requests.customer_name),
@@ -671,6 +952,11 @@ app.post('/api/requests', async (req, res) => {
          form_id = COALESCE(EXCLUDED.form_id, requests.form_id),
          form_title = COALESCE(EXCLUDED.form_title, requests.form_title),
          delivered_at = COALESCE(EXCLUDED.delivered_at, requests.delivered_at),
+         company_id = COALESCE(EXCLUDED.company_id, requests.company_id),
+         company_name = COALESCE(EXCLUDED.company_name, requests.company_name),
+         warehouse_id = COALESCE(EXCLUDED.warehouse_id, requests.warehouse_id),
+         warehouse_name = COALESCE(EXCLUDED.warehouse_name, requests.warehouse_name),
+         customer_id = COALESCE(EXCLUDED.customer_id, requests.customer_id),
          updated_at = CURRENT_TIMESTAMP
        RETURNING *`,
       [
@@ -718,6 +1004,11 @@ app.post('/api/requests', async (req, res) => {
         reqData.formId || null,
         reqData.formTitle || null,
         deliveredAt,
+        companyId,
+        reqData.companyName || null,
+        warehouseId,
+        reqData.warehouseName || null,
+        customerId,
         reqData.createdAt || new Date().toISOString(),
         reqData.updatedAt || new Date().toISOString()
       ]
@@ -742,6 +1033,15 @@ app.put('/api/requests/:id', async (req, res) => {
     const deliveredAt = (r.deliveredAt && String(r.deliveredAt).trim())
       ? String(r.deliveredAt).trim()
       : (r.deliveredAt === null ? null : undefined);
+    const companyId = r.companyId
+      ? (await pool.query('SELECT id FROM companies WHERE id = $1', [r.companyId])).rows[0]?.id || null
+      : null;
+    const warehouseId = r.warehouseId
+      ? (await pool.query('SELECT id FROM warehouses WHERE id = $1', [r.warehouseId])).rows[0]?.id || null
+      : null;
+    const customerId = r.customerId
+      ? (await pool.query('SELECT id FROM customers WHERE id = $1', [r.customerId])).rows[0]?.id || null
+      : null;
 
     const result = await pool.query(
       `UPDATE requests SET
@@ -780,8 +1080,13 @@ app.put('/api/requests/:id', async (req, res) => {
          budget_after_approval = COALESCE($33, budget_after_approval),
          form_id = COALESCE($34, form_id),
          form_title = COALESCE($35, form_title),
+         company_id = COALESCE($36, company_id),
+         company_name = COALESCE($37, company_name),
+         warehouse_id = COALESCE($38, warehouse_id),
+         warehouse_name = COALESCE($39, warehouse_name),
+         customer_id = COALESCE($40, customer_id),
          updated_at = CURRENT_TIMESTAMP
-       WHERE id = $36
+       WHERE id = $41
        RETURNING *`,
       [
         r.customerName ?? null,
@@ -819,6 +1124,11 @@ app.put('/api/requests/:id', async (req, res) => {
         r.budgetAfterApproval != null ? parseFloat(r.budgetAfterApproval) : null,
         r.formId ?? null,
         r.formTitle ?? null,
+        companyId,
+        r.companyName ?? null,
+        warehouseId,
+        r.warehouseName ?? null,
+        customerId,
         id
       ]
     );
@@ -1091,10 +1401,10 @@ app.post('/api/notifications', async (req, res) => {
         n.title,
         n.message,
         n.type,
-        n.isRead ?? false,
-        n.link || null,
-        n.relatedEntityType || null,
-        n.relatedEntityId || null,
+        n.read ?? n.isRead ?? false,
+        n.actionUrl || n.link || null,
+        n.entityType || n.relatedEntityType || null,
+        n.entityId || n.relatedEntityId || null,
         n.createdAt || new Date().toISOString()
       ]
     );
