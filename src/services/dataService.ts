@@ -1223,7 +1223,7 @@ class DataService {
         'budget',
         `/budgets`
       );
-    } else if (pctUsed >= settings.budgetRules.warningThresholdPercent) {
+    } else if (pctUsed >= (settings?.budgetRules?.warningThresholdPercent ?? 80)) {
       this.notify(
         'all_admins',
         `Budget Warning: ${team.name}`,
