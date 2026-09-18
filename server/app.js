@@ -1579,13 +1579,21 @@ app.get('/api/settings', async (req, res) => {
 
 app.put('/api/settings', async (req, res) => {
   try {
+    const existing = await pool.query('SELECT data FROM settings WHERE id = $1', ['global']);
+    const currentData = existing.rows[0]?.data || {};
+    const merged = {
+      ...currentData,
+      ...req.body,
+      branding: { ...(currentData.branding || {}), ...(req.body?.branding || {}) },
+      budgetRules: { ...(currentData.budgetRules || {}), ...(req.body?.budgetRules || {}) }
+    };
     await pool.query(
       `INSERT INTO settings (id, data, updated_at)
        VALUES ('global', $1, CURRENT_TIMESTAMP)
        ON CONFLICT (id) DO UPDATE SET data = EXCLUDED.data, updated_at = CURRENT_TIMESTAMP`,
-      [JSON.stringify(req.body)]
+      [JSON.stringify(merged)]
     );
-    res.json({ success: true, settings: req.body });
+    res.json({ success: true, settings: merged });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }

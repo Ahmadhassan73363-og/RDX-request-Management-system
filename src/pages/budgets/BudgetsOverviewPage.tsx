@@ -50,7 +50,7 @@ export const BudgetsOverviewPage: React.FC = () => {
   const overallBurnPct = totalAllocated > 0 ? Math.round((totalSpent / totalAllocated) * 100) : 0;
 
   const lowBudgetTeams = teams.filter(t =>
-    (t.spentBudget / t.allocatedBudget) * 100 >= settings.budgetRules.warningThresholdPercent
+    (t.spentBudget / (t.allocatedBudget || 1)) * 100 >= (settings?.budgetRules?.warningThresholdPercent ?? 80)
   );
 
   const handleOpenAdjust = (teamId?: string) => {
@@ -164,7 +164,7 @@ export const BudgetsOverviewPage: React.FC = () => {
             Threshold Warnings
           </span>
           <div className="text-2xl font-bold font-mono text-rose-500 mt-2">
-            {lowBudgetTeams.length} <span className="text-xs font-normal text-muted-foreground">Teams &gt;{settings.budgetRules.warningThresholdPercent}%</span>
+            {lowBudgetTeams.length} <span className="text-xs font-normal text-muted-foreground">Teams &gt;{settings?.budgetRules?.warningThresholdPercent ?? 80}%</span>
           </div>
           <p className="text-[11px] text-muted-foreground mt-1">Approaching or exceeded safety limit</p>
         </Card>
@@ -182,7 +182,7 @@ export const BudgetsOverviewPage: React.FC = () => {
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 pt-1">
             {teams.map((t) => {
               const burnPct = Math.round(((t.spentBudget || 0) / (t.allocatedBudget || 1)) * 100);
-              const isWarning = burnPct >= settings.budgetRules.warningThresholdPercent;
+              const isWarning = burnPct >= (settings?.budgetRules?.warningThresholdPercent ?? 80);
               const isCritical = burnPct >= 100;
 
               return (

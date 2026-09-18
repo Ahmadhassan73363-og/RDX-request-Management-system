@@ -237,8 +237,8 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onNavigate, onOpen
             <div className="space-y-4 pt-2">
               {topTeams.map((team) => {
                 const burnPct = Math.round(((team.spentBudget || 0) / (team.allocatedBudget || 1)) * 100);
-                const isWarning = burnPct >= settings.budgetRules.warningThresholdPercent;
-                const isCritical = burnPct >= settings.budgetRules.criticalThresholdPercent;
+                const isWarning = burnPct >= (settings?.budgetRules?.warningThresholdPercent ?? 80);
+                const isCritical = burnPct >= (settings?.budgetRules?.criticalThresholdPercent ?? 100);
 
                 return (
                   <div key={team.id} className="space-y-1.5">

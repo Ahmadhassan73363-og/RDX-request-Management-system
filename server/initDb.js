@@ -269,6 +269,42 @@ export async function ensureSchema() {
         ALTER TABLE teams ADD COLUMN IF NOT EXISTS spent_budget NUMERIC(15, 2) DEFAULT 0;
       `);
 
+      // 3. Ensure global settings row exists with budget rules
+      const settingsCheck = await pool.query("SELECT data FROM settings WHERE id = 'global'");
+      const defaultBudgetRules = {
+        warningThresholdPercent: 80,
+        criticalThresholdPercent: 100,
+        requireExecutiveOverrideWhenExceeded: true,
+        maxRequestDiscountAllowedPercent: 40
+      };
+      if (settingsCheck.rows.length === 0) {
+        await pool.query(
+          `INSERT INTO settings (id, data, updated_at)
+           VALUES ('global', $1, CURRENT_TIMESTAMP)`,
+          [JSON.stringify({
+            branding: {
+              companyName: 'RDX',
+              appTitle: 'Request & Budget Management System',
+              currencySymbol: '$',
+              currencyCode: 'USD',
+              primaryColorHex: '#b71234',
+              supportEmail: 'support@enterprise.com',
+              logoUrl: '/rdx-logo.png'
+            },
+            budgetRules: defaultBudgetRules
+          })]
+        );
+      } else if (!settingsCheck.rows[0].data?.budgetRules) {
+        const updated = {
+          ...settingsCheck.rows[0].data,
+          budgetRules: defaultBudgetRules
+        };
+        await pool.query(
+          `UPDATE settings SET data = $1, updated_at = CURRENT_TIMESTAMP WHERE id = 'global'`,
+          [JSON.stringify(updated)]
+        );
+      }
+
       initialized = true;
     } catch (err) {
       console.error('Schema initialization notice:', err.message);

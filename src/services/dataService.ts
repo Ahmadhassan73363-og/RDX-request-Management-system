@@ -83,7 +83,29 @@ class DataService {
       if (Array.isArray(data.budgetTransactions) && data.budgetTransactions.length) storage.set('budget_transactions', data.budgetTransactions);
       if (Array.isArray(data.notifications) && data.notifications.length) storage.set('notifications', data.notifications);
       if (Array.isArray(data.auditLogs) && data.auditLogs.length) storage.set('audit_logs', data.auditLogs);
-      if (data.settings) storage.set('settings', data.settings);
+      if (data.settings) {
+        const current = this.getSettings();
+        const merged: SystemSettings = {
+          ...INITIAL_SETTINGS,
+          ...current,
+          ...data.settings,
+          branding: { ...INITIAL_SETTINGS.branding, ...current?.branding, ...(data.settings.branding || {}) },
+          budgetRules: { ...INITIAL_SETTINGS.budgetRules, ...current?.budgetRules, ...(data.settings.budgetRules || {}) },
+          statusConfigs: (Array.isArray(data.settings.statusConfigs) && data.settings.statusConfigs.length > 0)
+            ? data.settings.statusConfigs
+            : (current?.statusConfigs || INITIAL_SETTINGS.statusConfigs),
+          approvalChains: (Array.isArray(data.settings.approvalChains) && data.settings.approvalChains.length > 0)
+            ? data.settings.approvalChains
+            : (current?.approvalChains || INITIAL_SETTINGS.approvalChains),
+          categories: (Array.isArray(data.settings.categories) && data.settings.categories.length > 0)
+            ? data.settings.categories
+            : (current?.categories || INITIAL_SETTINGS.categories),
+          departments: (Array.isArray(data.settings.departments) && data.settings.departments.length > 0)
+            ? data.settings.departments
+            : (current?.departments || INITIAL_SETTINGS.departments)
+        };
+        storage.set('settings', merged);
+      }
       if (Array.isArray(data.additionalFields)) storage.set('additional_fields', data.additionalFields);
       if (Array.isArray(data.companies) && data.companies.length) storage.set('companies', data.companies);
       if (Array.isArray(data.warehouses) && data.warehouses.length) storage.set('warehouses', data.warehouses);
@@ -1487,7 +1509,26 @@ class DataService {
 
   // --- Settings ---
   public getSettings(): SystemSettings {
-    return storage.get<SystemSettings>('settings', INITIAL_SETTINGS);
+    const raw = storage.get<Partial<SystemSettings> | null>('settings', null);
+    if (!raw) return { ...INITIAL_SETTINGS };
+    return {
+      ...INITIAL_SETTINGS,
+      ...raw,
+      branding: { ...INITIAL_SETTINGS.branding, ...(raw.branding || {}) },
+      budgetRules: { ...INITIAL_SETTINGS.budgetRules, ...(raw.budgetRules || {}) },
+      statusConfigs: (Array.isArray(raw.statusConfigs) && raw.statusConfigs.length > 0)
+        ? raw.statusConfigs
+        : INITIAL_SETTINGS.statusConfigs,
+      approvalChains: (Array.isArray(raw.approvalChains) && raw.approvalChains.length > 0)
+        ? raw.approvalChains
+        : INITIAL_SETTINGS.approvalChains,
+      categories: (Array.isArray(raw.categories) && raw.categories.length > 0)
+        ? raw.categories
+        : INITIAL_SETTINGS.categories,
+      departments: (Array.isArray(raw.departments) && raw.departments.length > 0)
+        ? raw.departments
+        : INITIAL_SETTINGS.departments
+    };
   }
 
   public updateSettings(settings: Partial<SystemSettings>, actor: User): SystemSettings {
@@ -1495,8 +1536,8 @@ class DataService {
     const updated: SystemSettings = {
       ...current,
       ...settings,
-      branding: { ...current.branding, ...settings.branding },
-      budgetRules: { ...current.budgetRules, ...settings.budgetRules }
+      branding: { ...current.branding, ...(settings.branding || {}) },
+      budgetRules: { ...current.budgetRules, ...(settings.budgetRules || {}) }
     };
     storage.set('settings', updated);
     api.updateSettings(updated).catch(() => {});

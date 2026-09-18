@@ -155,7 +155,7 @@ export const ReportsPage: React.FC = () => {
             className="bg-background border border-input text-xs rounded-lg px-3 py-2 text-foreground focus:outline-none"
           >
             <option value="ALL">All Categories</option>
-            {settings.categories.map(c => (
+            {(settings?.categories || []).map(c => (
               <option key={c} value={c}>{c}</option>
             ))}
           </select>
@@ -188,7 +188,7 @@ export const ReportsPage: React.FC = () => {
 
       {/* Printable Letterhead (visible in print mode) */}
       <div className="hidden print-only p-6 border-b border-black text-black">
-        <h1 className="text-2xl font-bold">{settings.branding.companyName}</h1>
+        <h1 className="text-2xl font-bold">{settings?.branding?.companyName || 'RDX'}</h1>
         <p className="text-sm">Official Distribution & Budget Reconciliation Report</p>
         <p className="text-xs text-gray-600">Generated on {new Date().toLocaleString()}</p>
       </div>

@@ -23,7 +23,7 @@ export const SystemProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   };
 
   const getStatusConfig = (status: RequestStatus): StatusConfigItem => {
-    const found = settings.statusConfigs.find(s => s.key === status);
+    const found = settings?.statusConfigs?.find(s => s.key === status);
     if (found) return found;
     return {
       key: status,

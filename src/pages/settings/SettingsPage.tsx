@@ -29,31 +29,31 @@ export const SettingsPage: React.FC = () => {
   const [saveMessage, setSaveMessage] = useState('');
 
   // Branding state
-  const [companyName, setCompanyName] = useState(settings.branding.companyName);
-  const [appTitle, setAppTitle] = useState(settings.branding.appTitle);
-  const [currencySymbol, setCurrencySymbol] = useState(settings.branding.currencySymbol);
-  const [supportEmail, setSupportEmail] = useState(settings.branding.supportEmail);
-  const [maxAttachmentMb, setMaxAttachmentMb] = useState(settings.maxAttachmentSizeMb);
+  const [companyName, setCompanyName] = useState(settings?.branding?.companyName ?? 'RDX');
+  const [appTitle, setAppTitle] = useState(settings?.branding?.appTitle ?? 'Request & Budget Management System');
+  const [currencySymbol, setCurrencySymbol] = useState(settings?.branding?.currencySymbol ?? '$');
+  const [supportEmail, setSupportEmail] = useState(settings?.branding?.supportEmail ?? 'support@enterprise.com');
+  const [maxAttachmentMb, setMaxAttachmentMb] = useState(settings?.maxAttachmentSizeMb ?? 15);
 
   // Budget rules state
-  const [warningThreshold, setWarningThreshold] = useState(settings.budgetRules.warningThresholdPercent);
-  const [criticalThreshold, setCriticalThreshold] = useState(settings.budgetRules.criticalThresholdPercent);
-  const [requireOverride, setRequireOverride] = useState(settings.budgetRules.requireExecutiveOverrideWhenExceeded);
+  const [warningThreshold, setWarningThreshold] = useState(settings?.budgetRules?.warningThresholdPercent ?? 80);
+  const [criticalThreshold, setCriticalThreshold] = useState(settings?.budgetRules?.criticalThresholdPercent ?? 100);
+  const [requireOverride, setRequireOverride] = useState(settings?.budgetRules?.requireExecutiveOverrideWhenExceeded ?? true);
 
   // Status configs state
-  const [statusConfigs, setStatusConfigs] = useState([...settings.statusConfigs]);
+  const [statusConfigs, setStatusConfigs] = useState([...(settings?.statusConfigs ?? [])]);
 
   const handleSaveAll = () => {
     updateSettings({
       branding: {
-        ...settings.branding,
+        ...(settings?.branding || {}),
         companyName,
         appTitle,
         currencySymbol,
         supportEmail
       },
       budgetRules: {
-        ...settings.budgetRules,
+        ...(settings?.budgetRules || {}),
         warningThresholdPercent: Number(warningThreshold),
         criticalThresholdPercent: Number(criticalThreshold),
         requireExecutiveOverrideWhenExceeded: requireOverride,
@@ -315,7 +315,7 @@ export const SettingsPage: React.FC = () => {
               </div>
 
               <div className="space-y-2 pt-2">
-                {settings.approvalChains[0]?.steps.map((step) => (
+                {settings?.approvalChains?.[0]?.steps?.map((step) => (
                   <div key={step.id} className="p-3 rounded-lg bg-card border border-border flex items-center justify-between">
                     <div className="flex items-center gap-3">
                       <span className="w-6 h-6 rounded-full bg-primary text-primary-foreground font-bold flex items-center justify-center text-xs">
