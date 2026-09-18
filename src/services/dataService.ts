@@ -830,6 +830,13 @@ class DataService {
       formId?: string;
       formTitle?: string;
       customFields?: Record<string, any>;
+
+      // Company / Warehouse / Customer linkage
+      companyId?: string;
+      companyName?: string;
+      warehouseId?: string;
+      warehouseName?: string;
+      customerId?: string;
     },
     actor: User
   ): RequestRecord {
@@ -873,8 +880,11 @@ class DataService {
     const trackingNumber = `REQ-${currentYear}-${uniqueSuffix}`;
 
     const effectiveDate = payload.date || payload.deliveryTargetDate || new Date().toISOString().split('T')[0];
-    const effectiveCompany = payload.businessName || payload.customerCompany || 'Enterprise Client';
-    const effectiveName = payload.agentOrTeamName || payload.customerName || actor.name;
+    // A linked Customer record's real contact/company name should win over the
+    // generic Agent/Business Name fields — otherwise selecting a Customer in
+    // NewRequestModal has no visible effect on the saved request.
+    const effectiveCompany = (payload.customerId && payload.customerCompany) || payload.businessName || payload.customerCompany || 'Enterprise Client';
+    const effectiveName = (payload.customerId && payload.customerName) || payload.agentOrTeamName || payload.customerName || actor.name;
     const effectiveCategory = payload.typeOfFoc || payload.requestCategory || 'Standard FOC';
     const effectiveItem = hasMultiSku && multiSkuSummary
       ? `${multiSkuSummary} (Total Qty: ${numQty})`
@@ -932,6 +942,11 @@ class DataService {
       formId: payload.formId,
       formTitle: payload.formTitle,
       customFields: payload.customFields,
+      companyId: payload.companyId,
+      companyName: payload.companyName,
+      warehouseId: payload.warehouseId,
+      warehouseName: payload.warehouseName,
+      customerId: payload.customerId,
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString()
     };

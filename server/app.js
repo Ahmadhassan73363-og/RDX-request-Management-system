@@ -465,24 +465,24 @@ app.put('/api/users/:id', async (req, res) => {
          title = COALESCE(EXCLUDED.title, users.title),
          phone = COALESCE(EXCLUDED.phone, users.phone),
          status = COALESCE(EXCLUDED.status, users.status),
-         allocated_budget = COALESCE(EXCLUDED.allocated_budget, users.allocated_budget),
-         spent_budget = COALESCE(EXCLUDED.spent_budget, users.spent_budget)
+         allocated_budget = COALESCE(EXCLUDED.allocated_budget, users.allocated_budget, 0),
+         spent_budget = COALESCE(EXCLUDED.spent_budget, users.spent_budget, 0)
        RETURNING *`,
       [
         id,
-        u.name || 'User',
-        u.email || `${id}@enterprise.com`,
-        u.avatar || null,
+        u.name ?? null,
+        u.email ?? null,
+        u.avatar ?? null,
         roleId,
-        u.roleName || null,
+        u.roleName ?? null,
         teamId,
-        u.teamName || null,
-        u.department || null,
-        u.title || null,
-        u.phone || null,
-        u.status || 'active',
-        u.allocatedBudget || 0,
-        u.spentBudget || 0,
+        u.teamName ?? null,
+        u.department ?? null,
+        u.title ?? null,
+        u.phone ?? null,
+        u.status ?? null,
+        u.allocatedBudget ?? null,
+        u.spentBudget ?? null,
         u.createdAt || new Date().toISOString()
       ]
     );
@@ -802,7 +802,11 @@ app.post('/api/teams', async (req, res) => {
 app.put('/api/teams/:id', async (req, res) => {
   const { id } = req.params;
   const t = req.body;
-  const allocated = t.allocatedBudget !== undefined ? t.allocatedBudget : (t.totalAllocatedBudget !== undefined ? t.totalAllocatedBudget : null);
+  // Pass `?? null` (never a fabricated default like '' or 0) for every field so a
+  // partial payload's absent fields stay `null` all the way to Postgres — only then
+  // does COALESCE(EXCLUDED.x, teams.x) actually preserve the existing value instead
+  // of a falsy-but-non-null default (0, '', []) silently overwriting it.
+  const allocated = t.allocatedBudget ?? t.totalAllocatedBudget ?? null;
   try {
     const result = await pool.query(
       `INSERT INTO teams (id, name, description, department, lead_id, member_ids, total_allocated_budget, spent_budget, fiscal_year, color, created_at)
@@ -813,21 +817,21 @@ app.put('/api/teams/:id', async (req, res) => {
          department = COALESCE(EXCLUDED.department, teams.department),
          lead_id = COALESCE(EXCLUDED.lead_id, teams.lead_id),
          member_ids = COALESCE(EXCLUDED.member_ids, teams.member_ids),
-         total_allocated_budget = COALESCE(EXCLUDED.total_allocated_budget, teams.total_allocated_budget),
-         spent_budget = COALESCE(EXCLUDED.spent_budget, teams.spent_budget),
+         total_allocated_budget = COALESCE(EXCLUDED.total_allocated_budget, teams.total_allocated_budget, 0),
+         spent_budget = COALESCE(EXCLUDED.spent_budget, teams.spent_budget, 0),
          color = COALESCE(EXCLUDED.color, teams.color)
        RETURNING *`,
       [
         id,
-        t.name || 'Team',
-        t.description || '',
-        t.department || '',
-        t.leadId || null,
-        JSON.stringify(t.memberIds || []),
-        allocated !== null ? allocated : 0,
-        t.spentBudget || 0,
-        t.fiscalYear || '2026',
-        t.color || '#3b82f6',
+        t.name ?? 'Team',
+        t.description ?? null,
+        t.department ?? null,
+        t.leadId ?? null,
+        t.memberIds ? JSON.stringify(t.memberIds) : null,
+        allocated,
+        t.spentBudget ?? null,
+        t.fiscalYear ?? '2026',
+        t.color ?? null,
         t.createdAt || new Date().toISOString()
       ]
     );
