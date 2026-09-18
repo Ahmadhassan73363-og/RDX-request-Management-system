@@ -9,6 +9,13 @@ export async function ensureSchema() {
 
   initPromise = (async () => {
     try {
+      // Fast path: if schema is already created, skip heavy DDL to prevent lock contention across serverless lambdas
+      const check = await pool.query("SELECT to_regclass('public.requests') AS tbl").catch(() => null);
+      if (check?.rows?.[0]?.tbl) {
+        initialized = true;
+        return;
+      }
+
       // 1. Create tables if they do not exist
       await pool.query(`
         CREATE TABLE IF NOT EXISTS roles (

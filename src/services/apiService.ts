@@ -7,21 +7,35 @@ export interface ApiSyncErrorDetail {
 // Every write goes through this helper so a failed sync is never silently
 // swallowed — it's surfaced as a window event the UI can listen for
 // (see Header.tsx), instead of only a console.warn no one will see.
-async function request(label: string, url: string, options?: RequestInit): Promise<boolean> {
-  try {
-    const res = await fetch(url, options);
-    if (!res.ok) {
-      const errBody = await res.text().catch(() => '');
-      throw new Error(`${res.status} ${res.statusText}${errBody ? `: ${errBody}` : ''}`);
+async function request(label: string, url: string, options?: RequestInit, maxAttempts = 2): Promise<boolean> {
+  let lastError: unknown = null;
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    try {
+      const res = await fetch(url, options);
+      if (!res.ok) {
+        const errBody = await res.text().catch(() => '');
+        // On transient server errors (cold starts, parallel DB connection wakeups on Vercel), retry once
+        if (res.status >= 500 && attempt < maxAttempts) {
+          await new Promise(r => setTimeout(r, 600));
+          continue;
+        }
+        throw new Error(`${res.status} ${res.statusText}${errBody ? `: ${errBody}` : ''}`);
+      }
+      return true;
+    } catch (e) {
+      lastError = e;
+      if (attempt < maxAttempts) {
+        await new Promise(r => setTimeout(r, 600));
+        continue;
+      }
     }
-    return true;
-  } catch (e) {
-    console.warn(`API sync failed for ${label}:`, e);
-    if (typeof window !== 'undefined') {
-      window.dispatchEvent(new CustomEvent<ApiSyncErrorDetail>('api-sync-error', { detail: { label, error: e } }));
-    }
-    return false;
   }
+
+  console.warn(`API sync failed for ${label}:`, lastError);
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(new CustomEvent<ApiSyncErrorDetail>('api-sync-error', { detail: { label, error: lastError } }));
+  }
+  return false;
 }
 
 const jsonBody = (body: any): RequestInit => ({
