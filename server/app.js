@@ -20,14 +20,12 @@ app.use(cors({
 }));
 app.use(express.json({ limit: '10mb' }));
 
-// Ensure database tables and columns exist before serving requests
-app.use(async (req, res, next) => {
-  try {
-    await ensureSchema();
-  } catch (err) {
-    console.error('Schema auto-check notice:', err.message);
-  }
-  next();
+// Run schema setup ONCE at module load time — NOT on every request.
+// On Vercel each lambda cold-starts once; this promise resolves before any
+// request is handled, so there is zero per-request DDL overhead and no
+// concurrent schema locks from simultaneous approval API calls.
+const schemaReady = ensureSchema().catch(err => {
+  console.error('Schema init error (non-fatal):', err.message);
 });
 
 // Path normalizer for Vercel serverless function routing and rewrite edge cases
