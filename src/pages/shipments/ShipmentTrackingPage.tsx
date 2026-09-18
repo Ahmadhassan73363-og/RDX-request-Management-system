@@ -26,6 +26,7 @@ import { RequestRecord, ShipmentStatus } from '../../types/request';
 import { Card, CardHeader, CardTitle, CardContent } from '../../components/common/Card';
 import { Button } from '../../components/common/Button';
 import { Modal } from '../../components/common/Modal';
+import { useSyncedState } from '../../hooks/useSyncedState';
 
 interface ShipmentTrackingPageProps {
   onNavigateToRequest: (id: string) => void;
@@ -99,13 +100,8 @@ export const ShipmentTrackingPage: React.FC<ShipmentTrackingPageProps> = ({ onNa
     currentUser.roleName === 'Super Admin' ||
     hasPermission('shipments:manage');
 
-  const allRequests = useMemo(() => {
-    return dataService.getRequests();
-  }, [refreshTick]);
-
-  const teams = useMemo(() => {
-    return dataService.getTeams();
-  }, []);
+  const [allRequests] = useSyncedState(() => dataService.getRequests());
+  const [teams] = useSyncedState(() => dataService.getTeams());
 
   // Eligible shipment requests are those approved (or already assigned a shipment status)
   const shipmentRequests = useMemo(() => {

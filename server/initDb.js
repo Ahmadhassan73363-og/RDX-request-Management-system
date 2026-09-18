@@ -205,6 +205,53 @@ export async function ensureSchema() {
           display_order INT DEFAULT 0,
           created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
         );
+
+        CREATE TABLE IF NOT EXISTS companies (
+          id VARCHAR(50) PRIMARY KEY,
+          name VARCHAR(150) NOT NULL,
+          short_code VARCHAR(50),
+          legal_name VARCHAR(200),
+          logo_url TEXT,
+          address TEXT,
+          tax_id VARCHAR(100),
+          contact_name VARCHAR(100),
+          contact_email VARCHAR(150),
+          contact_phone VARCHAR(50),
+          default_currency VARCHAR(20) DEFAULT 'USD',
+          color VARCHAR(50) DEFAULT '#3b82f6',
+          active BOOLEAN DEFAULT true,
+          created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+        );
+
+        CREATE TABLE IF NOT EXISTS warehouses (
+          id VARCHAR(50) PRIMARY KEY,
+          name VARCHAR(150) NOT NULL,
+          code VARCHAR(50),
+          company_id VARCHAR(50) REFERENCES companies(id) ON DELETE SET NULL,
+          company_name VARCHAR(150),
+          address TEXT,
+          contact_name VARCHAR(100),
+          contact_phone VARCHAR(50),
+          default_carrier VARCHAR(100),
+          active BOOLEAN DEFAULT true,
+          created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+        );
+
+        CREATE TABLE IF NOT EXISTS customers (
+          id VARCHAR(50) PRIMARY KEY,
+          contact_name VARCHAR(150) NOT NULL,
+          company_name VARCHAR(150),
+          email VARCHAR(150),
+          phone VARCHAR(50),
+          shipping_address TEXT,
+          billing_same_as_shipping BOOLEAN DEFAULT true,
+          billing_address TEXT,
+          account_code VARCHAR(50),
+          tags JSONB DEFAULT '[]'::jsonb,
+          notes TEXT,
+          active BOOLEAN DEFAULT true,
+          created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+        );
       `);
 
       // 2. Safe additive column migrations for existing databases
@@ -213,6 +260,11 @@ export async function ensureSchema() {
         ALTER TABLE requests ADD COLUMN IF NOT EXISTS form_title VARCHAR(200);
         ALTER TABLE requests ADD COLUMN IF NOT EXISTS sku_items JSONB DEFAULT '[]'::jsonb;
         ALTER TABLE requests ADD COLUMN IF NOT EXISTS custom_fields JSONB DEFAULT '{}'::jsonb;
+        ALTER TABLE requests ADD COLUMN IF NOT EXISTS company_id VARCHAR(50);
+        ALTER TABLE requests ADD COLUMN IF NOT EXISTS company_name VARCHAR(150);
+        ALTER TABLE requests ADD COLUMN IF NOT EXISTS warehouse_id VARCHAR(50);
+        ALTER TABLE requests ADD COLUMN IF NOT EXISTS warehouse_name VARCHAR(150);
+        ALTER TABLE requests ADD COLUMN IF NOT EXISTS customer_id VARCHAR(50);
         ALTER TABLE teams ADD COLUMN IF NOT EXISTS total_allocated_budget NUMERIC(15, 2) DEFAULT 0;
         ALTER TABLE teams ADD COLUMN IF NOT EXISTS spent_budget NUMERIC(15, 2) DEFAULT 0;
       `);

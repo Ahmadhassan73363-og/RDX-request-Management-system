@@ -20,6 +20,7 @@ import { Button } from '../../components/common/Button';
 import { StatusBadge, PriorityBadge } from '../../components/common/Badge';
 import { Modal } from '../../components/common/Modal';
 import { SignaturePad } from '../../components/common/SignaturePad';
+import { useSyncedState } from '../../hooks/useSyncedState';
 
 interface ApprovalsQueuePageProps {
   onNavigateToRequest: (id: string) => void;
@@ -38,8 +39,8 @@ export const ApprovalsQueuePage: React.FC<ApprovalsQueuePageProps> = ({ onNaviga
   const [actionError, setActionError] = useState('');
   const [isProcessing, setIsProcessing] = useState(false);
 
-  const requests = dataService.getRequests();
-  const teams = dataService.getTeams();
+  const [requests] = useSyncedState(() => dataService.getRequests());
+  const [teams] = useSyncedState(() => dataService.getTeams());
 
   // Pending approval statuses
   const pendingRequests = requests.filter(r =>

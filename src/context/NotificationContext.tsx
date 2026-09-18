@@ -40,6 +40,9 @@ export const NotificationProvider: React.FC<{ children: React.ReactNode }> = ({ 
 
   useEffect(() => {
     refreshNotifications();
+    const handleStorageSynced = () => refreshNotifications();
+    window.addEventListener('storage-synced', handleStorageSynced);
+    return () => window.removeEventListener('storage-synced', handleStorageSynced);
   }, [currentUser]);
 
   const markAsRead = (id: string) => {

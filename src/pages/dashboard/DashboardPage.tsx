@@ -34,9 +34,10 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onNavigate, onOpen
   const { currentUser, hasPermission } = useAuth();
   const { settings } = useSystem();
 
-  const teams = dataService.getTeams();
-  const requests = dataService.getRequests();
-  const auditLogs = dataService.getAuditLogs().slice(0, 6);
+  const [teams] = useSyncedState(() => dataService.getTeams());
+  const [requests] = useSyncedState(() => dataService.getRequests());
+  const [rawAuditLogs] = useSyncedState(() => dataService.getAuditLogs());
+  const auditLogs = rawAuditLogs.slice(0, 6);
 
   // Additional (user-defined) columns joined onto the Recent Requests table
   const [additionalFields, setAdditionalFields] = useSyncedState(() => dataService.getAdditionalFields());

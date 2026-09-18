@@ -21,14 +21,15 @@ import { Button } from '../../components/common/Button';
 import { Modal } from '../../components/common/Modal';
 import { Input } from '../../components/common/Input';
 import { Select } from '../../components/common/Select';
+import { useSyncedState } from '../../hooks/useSyncedState';
 
 export const BudgetsOverviewPage: React.FC = () => {
   const { currentUser, hasPermission } = useAuth();
   const { settings } = useSystem();
   const [refreshKey, setRefreshKey] = useState(0);
 
-  const teams = dataService.getTeams();
-  const transactions = dataService.getBudgetTransactions();
+  const [teams] = useSyncedState(() => dataService.getTeams());
+  const [transactions] = useSyncedState(() => dataService.getBudgetTransactions());
 
   // Modal state for Adjusting Budget
   const [isAdjustModalOpen, setIsAdjustModalOpen] = useState(false);

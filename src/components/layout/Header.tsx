@@ -11,9 +11,11 @@ import {
   Mail,
   ExternalLink,
   Menu,
-  CloudOff
+  CloudOff,
+  RefreshCw
 } from 'lucide-react';
 import type { ApiSyncErrorDetail } from '../../services/apiService';
+import { dataService } from '../../services/dataService';
 import { useAuth } from '../../context/AuthContext';
 import { useTheme } from '../../context/ThemeContext';
 import { useNotifications } from '../../context/NotificationContext';
@@ -39,6 +41,21 @@ export const Header: React.FC<HeaderProps> = ({ onOpenCommandPalette, onToggleSi
   const [syncErrorCount, setSyncErrorCount] = useState(0);
   const [lastSyncError, setLastSyncError] = useState<string>('');
   const [bootstrapFailed, setBootstrapFailed] = useState(false);
+  const [isSyncing, setIsSyncing] = useState(false);
+
+  const handleRetrySync = async () => {
+    setIsSyncing(true);
+    try {
+      await dataService.syncFromDatabase();
+      setSyncErrorCount(0);
+      setBootstrapFailed(false);
+    } catch {
+      // handled
+    } finally {
+      setIsSyncing(false);
+    }
+  };
+
   useEffect(() => {
     const handler = (e: Event) => {
       const detail = (e as CustomEvent<ApiSyncErrorDetail>).detail;
@@ -101,26 +118,32 @@ export const Header: React.FC<HeaderProps> = ({ onOpenCommandPalette, onToggleSi
       <div className="flex items-center gap-2 sm:gap-3">
         {/* Database unreachable — the app is showing local/demo data, not live data */}
         {bootstrapFailed && (
-          <span
-            title="Could not reach the PostgreSQL database on load. You're viewing local/demo data — nothing here reflects the live database, and changes may not be shared with other users."
-            className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-destructive/10 text-destructive text-xs font-semibold border border-destructive/30"
+          <button
+            type="button"
+            onClick={handleRetrySync}
+            disabled={isSyncing}
+            title="Could not reach the PostgreSQL database on load. You're viewing local/demo data. Click to retry connecting."
+            className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-destructive/10 hover:bg-destructive/20 text-destructive text-xs font-semibold border border-destructive/30 transition-colors disabled:opacity-50"
           >
             <CloudOff className="w-3.5 h-3.5" />
-            <span className="hidden sm:inline">DB unreachable — demo data</span>
-          </span>
+            <span className="hidden sm:inline">{isSyncing ? 'Connecting...' : 'DB unreachable — retry'}</span>
+            <RefreshCw className={`w-3 h-3 ml-0.5 ${isSyncing ? 'animate-spin' : ''}`} />
+          </button>
         )}
 
         {/* Background DB sync failure indicator */}
         {syncErrorCount > 0 && (
           <button
             type="button"
-            onClick={() => setSyncErrorCount(0)}
-            title={`${syncErrorCount} background save${syncErrorCount > 1 ? 's' : ''} failed to sync (last: ${lastSyncError}). Your changes are kept locally — click to dismiss.`}
-            className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-amber-500/10 hover:bg-amber-500/20 text-amber-600 dark:text-amber-400 text-xs font-semibold border border-amber-500/30 transition-colors"
+            onClick={handleRetrySync}
+            disabled={isSyncing}
+            title={`${syncErrorCount} background save${syncErrorCount > 1 ? 's' : ''} failed to sync (last: ${lastSyncError}). Click to retry synchronizing with database.`}
+            className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-amber-500/10 hover:bg-amber-500/20 text-amber-600 dark:text-amber-400 text-xs font-semibold border border-amber-500/30 transition-colors disabled:opacity-50"
           >
             <CloudOff className="w-3.5 h-3.5" />
-            <span className="hidden sm:inline">Sync issue</span>
+            <span className="hidden sm:inline">{isSyncing ? 'Retrying sync...' : 'Sync issue'}</span>
             <span>({syncErrorCount})</span>
+            <RefreshCw className={`w-3 h-3 ml-0.5 ${isSyncing ? 'animate-spin' : ''}`} />
           </button>
         )}
 

@@ -17,12 +17,13 @@ import { Card, CardHeader, CardTitle, CardContent } from '../../components/commo
 import { Button } from '../../components/common/Button';
 import { StatusBadge } from '../../components/common/Badge';
 import { exportToExcel } from '../../utils/exportExcel';
+import { useSyncedState } from '../../hooks/useSyncedState';
 
 export const ReportsPage: React.FC = () => {
   const { settings } = useSystem();
-  const allRequests = dataService.getRequests();
-  const teams = dataService.getTeams();
-  const users = dataService.getUsers();
+  const [allRequests] = useSyncedState(() => dataService.getRequests());
+  const [teams] = useSyncedState(() => dataService.getTeams());
+  const [users] = useSyncedState(() => dataService.getUsers());
 
   // Filters state
   const [selectedTeam, setSelectedTeam] = useState('ALL');

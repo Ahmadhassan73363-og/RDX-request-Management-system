@@ -5,9 +5,10 @@ import { AuditLog, AuditActionType } from '../../types/audit';
 import { Card, CardHeader, CardTitle, CardContent } from '../../components/common/Card';
 import { Button } from '../../components/common/Button';
 import { Modal } from '../../components/common/Modal';
+import { useSyncedState } from '../../hooks/useSyncedState';
 
 export const AuditLogsPage: React.FC = () => {
-  const auditLogs = dataService.getAuditLogs();
+  const [auditLogs] = useSyncedState(() => dataService.getAuditLogs());
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedAction, setSelectedAction] = useState<string>('ALL');
   const [inspectLog, setInspectLog] = useState<AuditLog | null>(null);

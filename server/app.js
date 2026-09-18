@@ -450,23 +450,22 @@ app.put('/api/users/:id', async (req, res) => {
     const roleId = u.roleId ? (await pool.query('SELECT id FROM roles WHERE id = $1', [u.roleId])).rows[0]?.id || null : null;
     const teamId = u.teamId ? (await pool.query('SELECT id FROM teams WHERE id = $1', [u.teamId])).rows[0]?.id || null : null;
 
-    const result = await pool.query(
-      `INSERT INTO users (id, name, email, avatar, role_id, role_name, team_id, team_name, department, title, phone, status, allocated_budget, spent_budget, created_at)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
-       ON CONFLICT (id) DO UPDATE SET
-         name = COALESCE(EXCLUDED.name, users.name),
-         email = COALESCE(EXCLUDED.email, users.email),
-         avatar = COALESCE(EXCLUDED.avatar, users.avatar),
-         role_id = COALESCE(EXCLUDED.role_id, users.role_id),
-         role_name = COALESCE(EXCLUDED.role_name, users.role_name),
-         team_id = COALESCE(EXCLUDED.team_id, users.team_id),
-         team_name = COALESCE(EXCLUDED.team_name, users.team_name),
-         department = COALESCE(EXCLUDED.department, users.department),
-         title = COALESCE(EXCLUDED.title, users.title),
-         phone = COALESCE(EXCLUDED.phone, users.phone),
-         status = COALESCE(EXCLUDED.status, users.status),
-         allocated_budget = COALESCE(EXCLUDED.allocated_budget, users.allocated_budget, 0),
-         spent_budget = COALESCE(EXCLUDED.spent_budget, users.spent_budget, 0)
+    let result = await pool.query(
+      `UPDATE users SET
+         name = COALESCE($2, name),
+         email = COALESCE($3, email),
+         avatar = COALESCE($4, avatar),
+         role_id = COALESCE($5, role_id),
+         role_name = COALESCE($6, role_name),
+         team_id = COALESCE($7, team_id),
+         team_name = COALESCE($8, team_name),
+         department = COALESCE($9, department),
+         title = COALESCE($10, title),
+         phone = COALESCE($11, phone),
+         status = COALESCE($12, status),
+         allocated_budget = COALESCE($13, allocated_budget),
+         spent_budget = COALESCE($14, spent_budget)
+       WHERE id = $1
        RETURNING *`,
       [
         id,
@@ -481,11 +480,35 @@ app.put('/api/users/:id', async (req, res) => {
         u.title ?? null,
         u.phone ?? null,
         u.status ?? null,
-        u.allocatedBudget ?? null,
-        u.spentBudget ?? null,
-        u.createdAt || new Date().toISOString()
+        u.allocatedBudget != null ? parseFloat(u.allocatedBudget) : null,
+        u.spentBudget != null ? parseFloat(u.spentBudget) : null
       ]
     );
+
+    if (!result.rows.length) {
+      result = await pool.query(
+        `INSERT INTO users (id, name, email, avatar, role_id, role_name, team_id, team_name, department, title, phone, status, allocated_budget, spent_budget, created_at)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
+         RETURNING *`,
+        [
+          id,
+          u.name || 'User',
+          u.email || `${id}@enterprise.com`,
+          u.avatar || null,
+          roleId,
+          u.roleName || null,
+          teamId,
+          u.teamName || null,
+          u.department || null,
+          u.title || null,
+          u.phone || null,
+          u.status || 'active',
+          u.allocatedBudget != null ? parseFloat(u.allocatedBudget) : 0,
+          u.spentBudget != null ? parseFloat(u.spentBudget) : 0,
+          u.createdAt || new Date().toISOString()
+        ]
+      );
+    }
     res.json(mapUser(result.rows[0]));
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -802,39 +825,56 @@ app.post('/api/teams', async (req, res) => {
 app.put('/api/teams/:id', async (req, res) => {
   const { id } = req.params;
   const t = req.body;
-  // Pass `?? null` (never a fabricated default like '' or 0) for every field so a
-  // partial payload's absent fields stay `null` all the way to Postgres — only then
-  // does COALESCE(EXCLUDED.x, teams.x) actually preserve the existing value instead
-  // of a falsy-but-non-null default (0, '', []) silently overwriting it.
-  const allocated = t.allocatedBudget ?? t.totalAllocatedBudget ?? null;
+  const allocated = t.allocatedBudget !== undefined ? parseFloat(t.allocatedBudget) : (t.totalAllocatedBudget !== undefined ? parseFloat(t.totalAllocatedBudget) : null);
+  const spent = t.spentBudget !== undefined && t.spentBudget !== null ? parseFloat(t.spentBudget) : null;
   try {
-    const result = await pool.query(
-      `INSERT INTO teams (id, name, description, department, lead_id, member_ids, total_allocated_budget, spent_budget, fiscal_year, color, created_at)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
-       ON CONFLICT (id) DO UPDATE SET
-         name = COALESCE(EXCLUDED.name, teams.name),
-         description = COALESCE(EXCLUDED.description, teams.description),
-         department = COALESCE(EXCLUDED.department, teams.department),
-         lead_id = COALESCE(EXCLUDED.lead_id, teams.lead_id),
-         member_ids = COALESCE(EXCLUDED.member_ids, teams.member_ids),
-         total_allocated_budget = COALESCE(EXCLUDED.total_allocated_budget, teams.total_allocated_budget, 0),
-         spent_budget = COALESCE(EXCLUDED.spent_budget, teams.spent_budget, 0),
-         color = COALESCE(EXCLUDED.color, teams.color)
+    let result = await pool.query(
+      `UPDATE teams SET
+         name = COALESCE($2, name),
+         description = COALESCE($3, description),
+         department = COALESCE($4, department),
+         lead_id = COALESCE($5, lead_id),
+         member_ids = COALESCE($6, member_ids),
+         total_allocated_budget = COALESCE($7, total_allocated_budget),
+         spent_budget = COALESCE($8, spent_budget),
+         fiscal_year = COALESCE($9, fiscal_year),
+         color = COALESCE($10, color)
+       WHERE id = $1
        RETURNING *`,
       [
         id,
-        t.name ?? 'Team',
+        t.name ?? null,
         t.description ?? null,
         t.department ?? null,
         t.leadId ?? null,
         t.memberIds ? JSON.stringify(t.memberIds) : null,
         allocated,
-        t.spentBudget ?? null,
-        t.fiscalYear ?? '2026',
-        t.color ?? null,
-        t.createdAt || new Date().toISOString()
+        spent,
+        t.fiscalYear ?? null,
+        t.color ?? null
       ]
     );
+
+    if (!result.rows.length) {
+      result = await pool.query(
+        `INSERT INTO teams (id, name, description, department, lead_id, member_ids, total_allocated_budget, spent_budget, fiscal_year, color, created_at)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+         RETURNING *`,
+        [
+          id,
+          t.name || 'Team',
+          t.description || '',
+          t.department || '',
+          t.leadId || null,
+          JSON.stringify(t.memberIds || []),
+          allocated !== null ? allocated : 0,
+          spent !== null ? spent : 0,
+          t.fiscalYear || '2026',
+          t.color || '#3b82f6',
+          t.createdAt || new Date().toISOString()
+        ]
+      );
+    }
     res.json(mapTeam(result.rows[0]));
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -1136,7 +1176,103 @@ app.put('/api/requests/:id', async (req, res) => {
         id
       ]
     );
-    if (!result.rows.length) return res.status(404).json({ error: 'Request not found' });
+    if (!result.rows.length) {
+      let trackingNumber = r.trackingNumber || `REQ-${new Date().getFullYear()}-${Math.floor(1000 + Math.random() * 9000)}`;
+      const existingTracking = await pool.query('SELECT id FROM requests WHERE tracking_number = $1 AND id != $2', [trackingNumber, id]);
+      if (existingTracking.rows.length > 0) {
+        trackingNumber = `REQ-${new Date().getFullYear()}-${Date.now().toString().slice(-4)}${Math.floor(100 + Math.random() * 900)}`;
+      }
+      const requestDate = (r.requestDate && String(r.requestDate).trim()) ||
+                          (r.date && String(r.date).trim()) ||
+                          new Date().toISOString().split('T')[0];
+      const discountPercentage = parseFloat(r.discountPercentage) || 0;
+      const requestValue = parseFloat(r.requestValue) || parseFloat(r.sampleSkuTotal) || 0;
+      const budgetAmount = parseFloat(r.budgetAmount) || parseFloat(r.sampleSkuTotal) || 0;
+      const approvedAmount = (r.approvedAmount != null && r.approvedAmount !== '') ? parseFloat(r.approvedAmount) : null;
+      const sampleSkuQty = parseInt(r.sampleSkuQty, 10) || 0;
+      const sampleSkuCostPerUnit = parseFloat(r.sampleSkuCostPerUnit) || 0;
+      const sampleSkuTotal = parseFloat(r.sampleSkuTotal) || 0;
+      const teamRemainingBudgetAtRequest = parseFloat(r.teamRemainingBudgetAtRequest) || 0;
+      const budgetAfterApproval = parseFloat(r.budgetAfterApproval) || 0;
+
+      const insertRes = await pool.query(
+        `INSERT INTO requests (
+           id, tracking_number, customer_name, customer_company, request_category,
+           request_item, discount_percentage, request_value, budget_amount, team_id,
+           team_name, reason, request_date, delivery_target_date, priority,
+           status, current_approval_step_index, total_approval_steps, current_approver_role,
+           team_remaining_budget_at_request, budget_after_approval, approved_amount,
+           submitted_by_user_id, submitted_by_user_name, submitted_by_user_email,
+           attachments, comments, approval_history, date, department,
+           agent_or_team_name, business_name, type_of_foc, system_invoice_no,
+           sample_sku, sample_sku_qty, sample_sku_cost_per_unit, sample_sku_total,
+           sku_items, shipment_status, custom_fields, form_id, form_title, delivered_at,
+           company_id, company_name, warehouse_id, warehouse_name, customer_id,
+           created_at, updated_at
+         ) VALUES (
+           $1, $2, $3, $4, $5, $6, $7, $8, $9, $10,
+           $11, $12, $13, $14, $15, $16, $17, $18, $19, $20,
+           $21, $22, $23, $24, $25, $26, $27, $28, $29, $30,
+           $31, $32, $33, $34, $35, $36, $37, $38, $39, $40,
+           $41, $42, $43, $44, $45, $46, $47, $48, $49, $50, $51
+         )
+         RETURNING *`,
+        [
+          id,
+          trackingNumber,
+          r.customerName || r.agentOrTeamName || 'Customer',
+          r.customerCompany || r.businessName || '',
+          r.requestCategory || r.typeOfFoc || '',
+          r.requestItem || r.sampleSku || '',
+          discountPercentage,
+          requestValue,
+          budgetAmount,
+          r.teamId || null,
+          r.teamName || '',
+          r.reason || '',
+          requestDate,
+          deliveryTargetDate ?? null,
+          r.priority || 'normal',
+          r.status || 'submitted',
+          r.currentApprovalStepIndex != null ? parseInt(r.currentApprovalStepIndex, 10) : 1,
+          r.totalApprovalSteps || 4,
+          r.currentApproverRole || 'Executive',
+          teamRemainingBudgetAtRequest,
+          budgetAfterApproval,
+          approvedAmount,
+          r.submittedByUserId || null,
+          r.submittedByUserName || '',
+          r.submittedByUserEmail || '',
+          JSON.stringify(r.attachments || []),
+          JSON.stringify(r.comments || []),
+          JSON.stringify(r.approvalHistory || []),
+          dateVal ?? requestDate,
+          r.department || '',
+          r.agentOrTeamName || '',
+          r.businessName || '',
+          r.typeOfFoc || '',
+          r.systemInvoiceNo ? String(r.systemInvoiceNo) : null,
+          r.sampleSku || null,
+          sampleSkuQty,
+          sampleSkuCostPerUnit,
+          sampleSkuTotal,
+          JSON.stringify(r.skuItems || []),
+          r.shipmentStatus || 'pending',
+          JSON.stringify(r.customFields || {}),
+          r.formId || null,
+          r.formTitle || null,
+          deliveredAt ?? null,
+          companyId,
+          r.companyName || null,
+          warehouseId,
+          r.warehouseName || null,
+          customerId,
+          r.createdAt || new Date().toISOString(),
+          r.updatedAt || new Date().toISOString()
+        ]
+      );
+      return res.json(mapRequest(insertRes.rows[0]));
+    }
     res.json(mapRequest(result.rows[0]));
   } catch (err) {
     console.error('Error updating request:', err);
@@ -1469,6 +1605,7 @@ app.get('/api/additional-fields', async (req, res) => {
 
 app.post('/api/additional-fields', async (req, res) => {
   const f = req.body;
+  const fieldKey = f.key || f.fieldKey || (f.label ? String(f.label).trim().toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '') : `field_${Date.now()}`);
   try {
     const result = await pool.query(
       `INSERT INTO additional_fields (id, label, field_key, display_order, created_at)
@@ -1480,8 +1617,8 @@ app.post('/api/additional-fields', async (req, res) => {
        RETURNING *`,
       [
         f.id || `field-${Date.now()}`,
-        f.label,
-        f.key,
+        f.label || fieldKey,
+        fieldKey,
         f.displayOrder || 0,
         f.createdAt || new Date().toISOString()
       ]

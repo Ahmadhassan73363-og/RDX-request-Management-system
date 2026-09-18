@@ -23,6 +23,7 @@ import { CalendarView } from './CalendarView';
 import { NewRequestModal } from './NewRequestModal';
 import { RequestDetailPage } from './RequestDetailPage';
 import { exportToExcel } from '../../utils/exportExcel';
+import { useSyncedState } from '../../hooks/useSyncedState';
 
 interface RequestsListPageProps {
   initialRequestId?: string;
@@ -47,8 +48,8 @@ export const RequestsListPage: React.FC<RequestsListPageProps> = ({
   const [sortField, setSortField] = useState<'date' | 'amount' | 'tracking'>('date');
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc');
 
-  const teams = dataService.getTeams();
-  const allRequests = dataService.getRequests();
+  const [teams] = useSyncedState(() => dataService.getTeams());
+  const [allRequests] = useSyncedState(() => dataService.getRequests());
 
   // Filter & sort requests
   const filteredRequests = useMemo(() => {
