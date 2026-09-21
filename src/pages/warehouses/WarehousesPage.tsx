@@ -7,13 +7,11 @@ import { Card } from '../../components/common/Card';
 import { Button } from '../../components/common/Button';
 import { Modal } from '../../components/common/Modal';
 import { Input } from '../../components/common/Input';
-import { Select } from '../../components/common/Select';
 import { useSyncedState } from '../../hooks/useSyncedState';
 
 export const WarehousesPage: React.FC = () => {
   const { currentUser, hasPermission } = useAuth();
   const [warehouses, setWarehouses] = useSyncedState<Warehouse[]>(() => dataService.getWarehouses());
-  const companies = dataService.getCompanies();
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingWarehouse, setEditingWarehouse] = useState<Warehouse | null>(null);
   const [warehouseToDelete, setWarehouseToDelete] = useState<Warehouse | null>(null);
@@ -22,7 +20,6 @@ export const WarehousesPage: React.FC = () => {
 
   const [name, setName] = useState('');
   const [code, setCode] = useState('');
-  const [companyId, setCompanyId] = useState(companies[0]?.id || '');
   const [address, setAddress] = useState('');
   const [contactName, setContactName] = useState('');
   const [contactPhone, setContactPhone] = useState('');
@@ -34,7 +31,7 @@ export const WarehousesPage: React.FC = () => {
 
   const handleOpenAdd = () => {
     setEditingWarehouse(null);
-    setName(''); setCode(''); setCompanyId(companies[0]?.id || ''); setAddress('');
+    setName(''); setCode(''); setAddress('');
     setContactName(''); setContactPhone(''); setDefaultCarrier('');
     setError('');
     setIsModalOpen(true);
@@ -42,7 +39,7 @@ export const WarehousesPage: React.FC = () => {
 
   const handleOpenEdit = (w: Warehouse) => {
     setEditingWarehouse(w);
-    setName(w.name); setCode(w.code); setCompanyId(w.companyId); setAddress(w.address);
+    setName(w.name); setCode(w.code); setAddress(w.address);
     setContactName(w.contactName); setContactPhone(w.contactPhone); setDefaultCarrier(w.defaultCarrier || '');
     setError('');
     setIsModalOpen(true);
@@ -55,17 +52,12 @@ export const WarehousesPage: React.FC = () => {
       setError('Warehouse name is required');
       return;
     }
-    if (!companyId) {
-      setError('A linked company is required');
-      return;
-    }
     try {
       dataService.saveWarehouse(
         {
           id: editingWarehouse?.id,
           name: name.trim(),
           code: code.trim().toUpperCase(),
-          companyId,
           address: address.trim(),
           contactName: contactName.trim(),
           contactPhone: contactPhone.trim(),
@@ -100,21 +92,15 @@ export const WarehousesPage: React.FC = () => {
             Warehouse Directory
           </h2>
           <p className="text-xs text-muted-foreground mt-0.5">
-            Dispatch locations linked to a company, used as the shipment origin
+            Independent dispatch and fulfillment facilities used as the shipment origin
           </p>
         </div>
         {canManage && (
-          <Button variant="primary" size="sm" onClick={handleOpenAdd} leftIcon={<Plus className="w-4 h-4" />} disabled={companies.length === 0}>
+          <Button variant="primary" size="sm" onClick={handleOpenAdd} leftIcon={<Plus className="w-4 h-4" />}>
             Add Warehouse
           </Button>
         )}
       </div>
-
-      {companies.length === 0 && (
-        <div className="p-3.5 rounded-xl bg-amber-500/10 border border-amber-500/30 text-xs text-amber-700 dark:text-amber-400">
-          Add a company first — every warehouse must belong to one.
-        </div>
-      )}
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
         {warehouses.map((w) => (
@@ -123,7 +109,9 @@ export const WarehousesPage: React.FC = () => {
               <div className="flex items-start justify-between gap-2">
                 <div className="min-w-0">
                   <h3 className="text-sm font-bold text-foreground truncate">{w.name}</h3>
-                  <p className="text-[11px] text-muted-foreground">Code: {w.code} · {w.companyName}</p>
+                  <p className="text-[11px] text-muted-foreground">
+                    Code: {w.code}{w.defaultCarrier ? ` · Carrier: ${w.defaultCarrier}` : ''}
+                  </p>
                 </div>
                 {canManage && (
                   <div className="flex items-center gap-1 shrink-0">
@@ -172,7 +160,7 @@ export const WarehousesPage: React.FC = () => {
         isOpen={isModalOpen}
         onClose={() => setIsModalOpen(false)}
         title={editingWarehouse ? 'Edit Warehouse' : 'Add Warehouse'}
-        description="Warehouses are the shipment origin for requests dispatched under a company"
+        description="Warehouses are independent fulfillment centers and shipment origin locations"
         maxWidth="md"
       >
         <form onSubmit={handleSave} className="space-y-4">
@@ -186,13 +174,6 @@ export const WarehousesPage: React.FC = () => {
             <Input label="Warehouse Name *" placeholder="e.g. East Coast Distribution Center" value={name} onChange={(e) => setName(e.target.value)} required />
             <Input label="Code" placeholder="e.g. WH-EC1" value={code} onChange={(e) => setCode(e.target.value.toUpperCase())} />
           </div>
-
-          <Select
-            label="Linked Company *"
-            value={companyId}
-            onChange={(e) => setCompanyId(e.target.value)}
-            options={companies.map(c => ({ label: c.name, value: c.id }))}
-          />
 
           <div className="space-y-1.5">
             <label className="block text-xs font-semibold uppercase tracking-wider text-muted-foreground">Address</label>

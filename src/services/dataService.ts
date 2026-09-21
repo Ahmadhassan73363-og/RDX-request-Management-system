@@ -217,6 +217,37 @@ class DataService {
       }
     });
     storage.set('users', mergedUsers);
+
+    // Company synchronization: ensure companies have the latest fields (companyIdNumber, legalId, location, currency)
+    const storedCompanies = storage.get<Company[]>('companies', INITIAL_COMPANIES);
+    const mergedCompanies = [...storedCompanies];
+    INITIAL_COMPANIES.forEach(initComp => {
+      const idx = mergedCompanies.findIndex(c => c.id === initComp.id || c.name === initComp.name);
+      if (idx >= 0) {
+        mergedCompanies[idx] = {
+          ...initComp,
+          ...mergedCompanies[idx],
+          companyIdNumber: mergedCompanies[idx].companyIdNumber || initComp.companyIdNumber || mergedCompanies[idx].shortCode,
+          legalId: mergedCompanies[idx].legalId || initComp.legalId || '',
+          location: mergedCompanies[idx].location || initComp.location || '',
+          defaultCurrency: mergedCompanies[idx].defaultCurrency || initComp.defaultCurrency || 'USD'
+        };
+      } else {
+        mergedCompanies.push(initComp);
+      }
+    });
+    storage.set('companies', mergedCompanies);
+
+    // Warehouse synchronization: ensure warehouses are decoupled from companies
+    const storedWarehouses = storage.get<Warehouse[]>('warehouses', INITIAL_WAREHOUSES);
+    const mergedWarehouses = [...storedWarehouses];
+    INITIAL_WAREHOUSES.forEach(initWh => {
+      const idx = mergedWarehouses.findIndex(w => w.id === initWh.id);
+      if (idx < 0) {
+        mergedWarehouses.push(initWh);
+      }
+    });
+    storage.set('warehouses', mergedWarehouses);
   }
 
 
@@ -476,8 +507,11 @@ class DataService {
         id: 'company-' + Date.now(),
         name: companyData.name,
         shortCode: companyData.shortCode || companyData.name.substring(0, 4).toUpperCase(),
+        companyIdNumber: companyData.companyIdNumber || '',
         legalName: companyData.legalName || companyData.name,
+        legalId: companyData.legalId || '',
         logoUrl: companyData.logoUrl,
+        location: companyData.location || '',
         address: companyData.address || '',
         taxId: companyData.taxId || '',
         contactName: companyData.contactName || '',
@@ -501,10 +535,9 @@ class DataService {
     const company = companies.find(c => c.id === companyId);
     if (!company) throw new Error('Company not found');
 
-    const dependentWarehouses = this.getWarehouses().filter(w => w.companyId === companyId);
     const dependentRequests = this.getRequests().filter(r => r.companyId === companyId);
-    if (dependentWarehouses.length > 0 || dependentRequests.length > 0) {
-      throw new Error(`Cannot delete ${company.name}: ${dependentWarehouses.length} warehouse(s) and ${dependentRequests.length} request(s) are still linked to it. Reassign or resolve them first.`);
+    if (dependentRequests.length > 0) {
+      throw new Error(`Cannot delete ${company.name}: ${dependentRequests.length} request(s) are still linked to it. Reassign or resolve them first.`);
     }
 
     storage.set('companies', companies.filter(c => c.id !== companyId));
@@ -512,19 +545,18 @@ class DataService {
     this.logAudit('COMPANY_DELETE', 'Company', companyId, `Deleted company ${company.name}`, actor);
   }
 
-  // --- Warehouses (dispatch locations, linked to a Company) ---
+  // --- Warehouses (independent dispatch and fulfillment locations) ---
   public getWarehouses(): Warehouse[] {
     return storage.get<Warehouse[]>('warehouses', INITIAL_WAREHOUSES);
   }
 
-  public saveWarehouse(warehouseData: Partial<Warehouse> & { name: string; companyId: string }, actor: User): Warehouse {
+  public saveWarehouse(warehouseData: Partial<Warehouse> & { name: string; companyId?: string }, actor: User): Warehouse {
     const warehouses = this.getWarehouses();
-    const company = this.getCompanies().find(c => c.id === warehouseData.companyId);
     let saved: Warehouse;
     if (warehouseData.id) {
       const idx = warehouses.findIndex(w => w.id === warehouseData.id);
       const old = warehouses[idx];
-      saved = { ...old, ...warehouseData, companyName: company?.name || old.companyName };
+      saved = { ...old, ...warehouseData };
       warehouses[idx] = saved;
       this.logAudit('WAREHOUSE_UPDATE', 'Warehouse', saved.id, `Updated warehouse ${saved.name}`, actor, JSON.stringify(old), JSON.stringify(saved));
     } else {
@@ -533,7 +565,7 @@ class DataService {
         name: warehouseData.name,
         code: warehouseData.code || warehouseData.name.substring(0, 4).toUpperCase(),
         companyId: warehouseData.companyId,
-        companyName: company?.name || '',
+        companyName: warehouseData.companyName,
         address: warehouseData.address || '',
         contactName: warehouseData.contactName || '',
         contactPhone: warehouseData.contactPhone || '',

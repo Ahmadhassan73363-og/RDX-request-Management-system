@@ -8,12 +8,14 @@ import {
   Calculator,
   FormInput,
   Layers,
-  Info
+  Info,
+  Users
 } from 'lucide-react';
 import { Modal } from '../../components/common/Modal';
 import { Button } from '../../components/common/Button';
 import { Input } from '../../components/common/Input';
 import { Select } from '../../components/common/Select';
+import { SearchableSelect } from '../../components/common/SearchableSelect';
 import { SignaturePad } from '../../components/common/SignaturePad';
 import { useAuth } from '../../context/AuthContext';
 import { dataService } from '../../services/dataService';
@@ -35,21 +37,18 @@ interface SkuRow {
 
 export const NewRequestModal: React.FC<NewRequestModalProps> = ({ isOpen, onClose, onSuccess }) => {
   const { currentUser } = useAuth();
-  const teams = dataService.getTeams().filter(t => t.active);
-  const companies = dataService.getCompanies().filter(c => c.active);
-  const allWarehouses = dataService.getWarehouses().filter(w => w.active);
-  const customers = dataService.getCustomers().filter(c => c.active);
+  const [teams, setTeams] = useState(() => dataService.getTeams().filter(t => t.active));
+  const [companies, setCompanies] = useState(() => dataService.getCompanies().filter(c => c.active));
+  const [allWarehouses, setAllWarehouses] = useState(() => dataService.getWarehouses().filter(w => w.active));
+  const [customers, setCustomers] = useState(() => dataService.getCustomers().filter(c => c.active));
 
-  // Company / Warehouse / Customer linkage
-  const [companyId, setCompanyId] = useState(companies[0]?.id || '');
-  const warehousesForCompany = allWarehouses.filter(w => w.companyId === companyId);
-  const [warehouseId, setWarehouseId] = useState(warehousesForCompany[0]?.id || '');
+  // Company / Warehouse / Customer
+  const [companyId, setCompanyId] = useState(() => dataService.getCompanies().filter(c => c.active)[0]?.id || '');
+  const [warehouseId, setWarehouseId] = useState(() => dataService.getWarehouses().filter(w => w.active)[0]?.id || '');
   const [customerId, setCustomerId] = useState('');
 
   const handleCompanyChange = (newCompanyId: string) => {
     setCompanyId(newCompanyId);
-    const nextWarehouses = allWarehouses.filter(w => w.companyId === newCompanyId);
-    setWarehouseId(nextWarehouses[0]?.id || '');
   };
 
   // Forms available from Form Builder
@@ -58,9 +57,22 @@ export const NewRequestModal: React.FC<NewRequestModalProps> = ({ isOpen, onClos
   );
   const [selectedFormId, setSelectedFormId] = useState<string>('form-std-sample-foc');
 
-  // Refresh active forms when modal opens
+  // Refresh active entities and forms when modal opens
   useEffect(() => {
     if (isOpen) {
+      const activeTeams = dataService.getTeams().filter(t => t.active);
+      const activeCompanies = dataService.getCompanies().filter(c => c.active);
+      const activeWarehouses = dataService.getWarehouses().filter(w => w.active);
+      const activeCustomers = dataService.getCustomers().filter(c => c.active);
+
+      setTeams(activeTeams);
+      setCompanies(activeCompanies);
+      setAllWarehouses(activeWarehouses);
+      setCustomers(activeCustomers);
+
+      setCompanyId(prev => (prev && activeCompanies.some(c => c.id === prev)) ? prev : (activeCompanies[0]?.id || ''));
+      setWarehouseId(prev => (prev && activeWarehouses.some(w => w.id === prev)) ? prev : (activeWarehouses[0]?.id || ''));
+
       const forms = dataService.getForms().filter(f => f.isActive);
       setAvailableForms(forms);
       if (!forms.some(f => f.id === selectedFormId)) {
@@ -467,34 +479,24 @@ export const NewRequestModal: React.FC<NewRequestModalProps> = ({ isOpen, onClos
           )}
         </div>
 
-        {/* Company / Warehouse / Customer Linkage */}
+        {/* Logistics & Dispatch Origin */}
         <div className="p-3.5 rounded-xl bg-card border border-border space-y-3">
           <span className="text-xs font-bold text-foreground block">
-            Company · Warehouse · Customer
+            Issuing Entity & Dispatch Warehouse
           </span>
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <Select
               label="Issuing Company"
               value={companyId}
               onChange={(e) => handleCompanyChange(e.target.value)}
-              options={companies.map(c => ({ label: c.name, value: c.id }))}
+              options={companies.map(c => ({ label: `${c.name} (${c.defaultCurrency})`, value: c.id }))}
             />
             <Select
               label="Dispatch Warehouse"
               value={warehouseId}
               onChange={(e) => setWarehouseId(e.target.value)}
-              options={warehousesForCompany.map(w => ({ label: w.name, value: w.id }))}
-              helperText={warehousesForCompany.length === 0 ? 'No warehouses for this company' : undefined}
-            />
-            <Select
-              label="Customer (optional)"
-              value={customerId}
-              onChange={(e) => handleCustomerChange(e.target.value)}
-              options={[
-                { label: 'None — enter details manually', value: '' },
-                ...customers.map(c => ({ label: `${c.contactName} (${c.companyName})`, value: c.id }))
-              ]}
-              helperText={customerId ? 'Business Name auto-filled from customer record' : undefined}
+              options={allWarehouses.map(w => ({ label: `${w.name} (${w.code})`, value: w.id }))}
+              helperText={allWarehouses.length === 0 ? 'No warehouses available' : undefined}
             />
           </div>
         </div>
@@ -503,7 +505,7 @@ export const NewRequestModal: React.FC<NewRequestModalProps> = ({ isOpen, onClos
         {isDefaultSampleForm ? (
           /* STANDARD FORM LAYOUT */
           <>
-            {/* Row 1: Date (Auto-fetched) & Department */}
+            {/* Row 1: Date & Customer Selection (Customer placed directly after Date) */}
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
                 <div className="flex items-center justify-between mb-1.5">
@@ -523,6 +525,18 @@ export const NewRequestModal: React.FC<NewRequestModalProps> = ({ isOpen, onClos
                 />
               </div>
 
+              <SearchableSelect
+                label="Customer / Company (optional)"
+                value={customerId}
+                onChange={(val) => handleCustomerChange(val)}
+                options={customers.map(c => ({ label: `${c.contactName} (${c.companyName})`, value: c.id }))}
+                emptyLabel="None — enter details manually"
+                helperText={customerId ? 'Customer / Company details auto-filled from directory' : undefined}
+              />
+            </div>
+
+            {/* Row 2: Department & Agent / Requester Name */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <Input
                 label="Department *"
                 placeholder="e.g. Commercial Sales / Marketing"
@@ -530,17 +544,17 @@ export const NewRequestModal: React.FC<NewRequestModalProps> = ({ isOpen, onClos
                 onChange={(e) => setDepartment(e.target.value)}
                 required
               />
-            </div>
-
-            {/* Row 2: Agent/Team Name & Business Name */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <Input
-                label="Agent / Team Name *"
+                label="Agent / Requester Name *"
                 placeholder="e.g. John Doe / Apex Sales Team"
                 value={agentOrTeamName}
                 onChange={(e) => setAgentOrTeamName(e.target.value)}
                 required
               />
+            </div>
+
+            {/* Row 3: Business Name & Type of FOC */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <Input
                 label="Business Name *"
                 placeholder="e.g. Acme Corporation"
@@ -548,10 +562,6 @@ export const NewRequestModal: React.FC<NewRequestModalProps> = ({ isOpen, onClos
                 onChange={(e) => setBusinessName(e.target.value)}
                 required
               />
-            </div>
-
-            {/* Row 3: Type of FOC & System Invoice no. */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <Input
                 label="Type of FOC *"
                 placeholder="e.g. Promotional Sample / Customer Trial"
@@ -559,6 +569,10 @@ export const NewRequestModal: React.FC<NewRequestModalProps> = ({ isOpen, onClos
                 onChange={(e) => setTypeOfFoc(e.target.value)}
                 required
               />
+            </div>
+
+            {/* Row 4: System Invoice no. & Priority */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <Input
                 label="System Invoice no."
                 type="number"
@@ -566,45 +580,45 @@ export const NewRequestModal: React.FC<NewRequestModalProps> = ({ isOpen, onClos
                 value={systemInvoiceNo}
                 onChange={(e) => setSystemInvoiceNo(e.target.value)}
               />
+              <Select
+                label="Priority *"
+                value={priority}
+                onChange={(e) => setPriority(e.target.value as RequestPriority)}
+                options={[
+                  { label: 'Low', value: 'low' },
+                  { label: 'Normal', value: 'normal' },
+                  { label: 'High', value: 'high' },
+                  { label: 'Urgent', value: 'urgent' },
+                ]}
+              />
             </div>
 
-            {/* Row 4: Team Allocation & Priority */}
-            <div className="p-3.5 rounded-xl bg-card border border-border space-y-3">
-              <div className="flex items-center justify-between">
-                <span className="text-xs font-bold text-foreground">
-                  Budget Ledger & Priority Allocation
-                </span>
-                <span className="text-[11px] text-muted-foreground">
-                  Required for departmental spend control
-                </span>
-              </div>
+            {/* Row 5: Calculation Section with Internal Team Selection */}
+            <div className="p-4 rounded-xl bg-muted/40 border border-border/80 space-y-4">
+              {/* Internal Team Selection Section */}
+              <div className="p-3.5 rounded-lg bg-card border border-border space-y-2">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-bold text-foreground flex items-center gap-1.5">
+                    <Users className="w-4 h-4 text-primary" />
+                    Internal Team Selection *
+                  </span>
+                  <span className="text-[11px] text-muted-foreground">
+                    Required for departmental spend control & budget ledger
+                  </span>
+                </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <Select
-                  label="Team Budget Ledger *"
+                  label="Select Internal Team *"
                   value={teamId}
                   onChange={(e) => setTeamId(e.target.value)}
                   options={teams.map(t => ({
-                    label: `${t.name} ($${(t.remainingBudget || 0).toLocaleString()} left)`,
+                    label: `${t.name} ($${(t.remainingBudget || 0).toLocaleString()} remaining)`,
                     value: t.id
                   }))}
                 />
-                <Select
-                  label="Priority *"
-                  value={priority}
-                  onChange={(e) => setPriority(e.target.value as RequestPriority)}
-                  options={[
-                    { label: 'Low', value: 'low' },
-                    { label: 'Normal', value: 'normal' },
-                    { label: 'High', value: 'high' },
-                    { label: 'Urgent', value: 'urgent' },
-                  ]}
-                />
               </div>
-            </div>
 
-            {/* Row 5: Multiple SKU Calculators Section */}
-            <div className="p-4 rounded-xl bg-muted/40 border border-border/80 space-y-4">
+              {/* SKU Calculators */}
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-1.5">
                   <Calculator className="w-4 h-4 text-primary" />
@@ -764,24 +778,25 @@ export const NewRequestModal: React.FC<NewRequestModalProps> = ({ isOpen, onClos
         ) : (
           /* DYNAMIC FIELDS GENERATED FROM FORM BUILDER */
           <div className="space-y-4">
-            {/* Team Allocation & Priority */}
+            {/* Internal Team Selection & Priority */}
             <div className="p-3.5 rounded-xl bg-card border border-border space-y-3">
               <div className="flex items-center justify-between">
-                <span className="text-xs font-bold text-foreground">
-                  Budget Ledger & Priority Allocation
+                <span className="text-xs font-bold text-foreground flex items-center gap-1.5">
+                  <Users className="w-4 h-4 text-primary" />
+                  Internal Team Selection & Priority
                 </span>
                 <span className="text-[11px] text-muted-foreground">
-                  Required for departmental spend control
+                  Required for departmental spend control & budget ledger
                 </span>
               </div>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <Select
-                  label="Team Budget Ledger *"
+                  label="Select Internal Team *"
                   value={teamId}
                   onChange={(e) => setTeamId(e.target.value)}
                   options={teams.map(t => ({
-                    label: `${t.name} ($${(t.remainingBudget || 0).toLocaleString()} left)`,
+                    label: `${t.name} ($${(t.remainingBudget || 0).toLocaleString()} remaining)`,
                     value: t.id
                   }))}
                 />

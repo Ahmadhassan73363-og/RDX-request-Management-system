@@ -274,6 +274,9 @@ export async function ensureSchema() {
         ALTER TABLE requests ADD COLUMN IF NOT EXISTS customer_id VARCHAR(50);
         ALTER TABLE teams ADD COLUMN IF NOT EXISTS total_allocated_budget NUMERIC(15, 2) DEFAULT 0;
         ALTER TABLE teams ADD COLUMN IF NOT EXISTS spent_budget NUMERIC(15, 2) DEFAULT 0;
+        ALTER TABLE companies ADD COLUMN IF NOT EXISTS company_id_number VARCHAR(100);
+        ALTER TABLE companies ADD COLUMN IF NOT EXISTS legal_id VARCHAR(100);
+        ALTER TABLE companies ADD COLUMN IF NOT EXISTS location VARCHAR(200);
       `);
 
       // 3. Ensure global settings row exists with budget rules

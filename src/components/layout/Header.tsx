@@ -63,11 +63,20 @@ export const Header: React.FC<HeaderProps> = ({ onOpenCommandPalette, onToggleSi
       setLastSyncError(detail?.label || 'unknown action');
     };
     const bootstrapHandler = () => setBootstrapFailed(true);
+    const onlineHandler = () => {
+      handleRetrySync();
+    };
+
     window.addEventListener('api-sync-error', handler);
     window.addEventListener('api-bootstrap-error', bootstrapHandler);
+    window.addEventListener('online', onlineHandler);
+    window.addEventListener('focus', onlineHandler);
+
     return () => {
       window.removeEventListener('api-sync-error', handler);
       window.removeEventListener('api-bootstrap-error', bootstrapHandler);
+      window.removeEventListener('online', onlineHandler);
+      window.removeEventListener('focus', onlineHandler);
     };
   }, []);
 

@@ -142,8 +142,11 @@ function mapCompany(row) {
     id: row.id,
     name: row.name,
     shortCode: row.short_code,
+    companyIdNumber: row.company_id_number || row.short_code,
     legalName: row.legal_name,
+    legalId: row.legal_id || '',
     logoUrl: row.logo_url || undefined,
+    location: row.location || '',
     address: row.address,
     taxId: row.tax_id,
     contactName: row.contact_name,
@@ -598,13 +601,16 @@ app.post('/api/companies', async (req, res) => {
   const c = req.body;
   try {
     const result = await pool.query(
-      `INSERT INTO companies (id, name, short_code, legal_name, logo_url, address, tax_id, contact_name, contact_email, contact_phone, default_currency, color, active)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
+      `INSERT INTO companies (id, name, short_code, company_id_number, legal_name, legal_id, logo_url, location, address, tax_id, contact_name, contact_email, contact_phone, default_currency, color, active)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16)
        ON CONFLICT (id) DO UPDATE SET
          name = COALESCE(EXCLUDED.name, companies.name),
          short_code = COALESCE(EXCLUDED.short_code, companies.short_code),
+         company_id_number = COALESCE(EXCLUDED.company_id_number, companies.company_id_number),
          legal_name = COALESCE(EXCLUDED.legal_name, companies.legal_name),
+         legal_id = COALESCE(EXCLUDED.legal_id, companies.legal_id),
          logo_url = COALESCE(EXCLUDED.logo_url, companies.logo_url),
+         location = COALESCE(EXCLUDED.location, companies.location),
          address = COALESCE(EXCLUDED.address, companies.address),
          tax_id = COALESCE(EXCLUDED.tax_id, companies.tax_id),
          contact_name = COALESCE(EXCLUDED.contact_name, companies.contact_name),
@@ -618,8 +624,11 @@ app.post('/api/companies', async (req, res) => {
         c.id || `company-${Date.now()}`,
         c.name,
         c.shortCode || '',
+        c.companyIdNumber || c.shortCode || '',
         c.legalName || '',
+        c.legalId || '',
         c.logoUrl || null,
+        c.location || '',
         c.address || '',
         c.taxId || '',
         c.contactName || '',
@@ -639,14 +648,12 @@ app.post('/api/companies', async (req, res) => {
 app.delete('/api/companies/:id', async (req, res) => {
   try {
     const dependents = await pool.query(
-      `SELECT
-         (SELECT COUNT(*) FROM warehouses WHERE company_id = $1) AS warehouse_count,
-         (SELECT COUNT(*) FROM requests WHERE company_id = $1) AS request_count`,
+      `SELECT (SELECT COUNT(*) FROM requests WHERE company_id = $1) AS request_count`,
       [req.params.id]
     );
-    const { warehouse_count, request_count } = dependents.rows[0];
-    if (Number(warehouse_count) > 0 || Number(request_count) > 0) {
-      return res.status(409).json({ error: `Cannot delete: ${warehouse_count} warehouse(s) and ${request_count} request(s) are still linked to this company.` });
+    const { request_count } = dependents.rows[0];
+    if (Number(request_count) > 0) {
+      return res.status(409).json({ error: `Cannot delete: ${request_count} request(s) are still linked to this company.` });
     }
     await pool.query('DELETE FROM companies WHERE id = $1', [req.params.id]);
     res.json({ success: true });

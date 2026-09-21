@@ -1,12 +1,13 @@
 import React, { useState } from 'react';
-import { Building2, Plus, Edit2, Trash2, AlertTriangle, Mail, Phone, MapPin, CheckCircle2 } from 'lucide-react';
+import { Building2, Plus, Edit2, Trash2, AlertTriangle, Mail, Phone, MapPin, CheckCircle2, Globe, FileBadge } from 'lucide-react';
 import { dataService } from '../../services/dataService';
 import { useAuth } from '../../context/AuthContext';
-import { Company } from '../../types/company';
-import { Card, CardHeader, CardTitle, CardContent } from '../../components/common/Card';
+import { Company, COMPANY_CURRENCIES } from '../../types/company';
+import { Card } from '../../components/common/Card';
 import { Button } from '../../components/common/Button';
 import { Modal } from '../../components/common/Modal';
 import { Input } from '../../components/common/Input';
+import { Select } from '../../components/common/Select';
 import { useSyncedState } from '../../hooks/useSyncedState';
 
 export const CompaniesPage: React.FC = () => {
@@ -21,9 +22,12 @@ export const CompaniesPage: React.FC = () => {
   // Form inputs
   const [name, setName] = useState('');
   const [shortCode, setShortCode] = useState('');
+  const [companyIdNumber, setCompanyIdNumber] = useState('');
   const [legalName, setLegalName] = useState('');
-  const [address, setAddress] = useState('');
+  const [legalId, setLegalId] = useState('');
   const [taxId, setTaxId] = useState('');
+  const [location, setLocation] = useState('');
+  const [address, setAddress] = useState('');
   const [contactName, setContactName] = useState('');
   const [contactEmail, setContactEmail] = useState('');
   const [contactPhone, setContactPhone] = useState('');
@@ -36,17 +40,38 @@ export const CompaniesPage: React.FC = () => {
 
   const handleOpenAdd = () => {
     setEditingCompany(null);
-    setName(''); setShortCode(''); setLegalName(''); setAddress(''); setTaxId('');
-    setContactName(''); setContactEmail(''); setContactPhone(''); setDefaultCurrency('USD'); setColor('#3b82f6');
+    setName('');
+    setShortCode('');
+    setCompanyIdNumber('');
+    setLegalName('');
+    setLegalId('');
+    setTaxId('');
+    setLocation('');
+    setAddress('');
+    setContactName('');
+    setContactEmail('');
+    setContactPhone('');
+    setDefaultCurrency('USD');
+    setColor('#3b82f6');
     setError('');
     setIsModalOpen(true);
   };
 
   const handleOpenEdit = (c: Company) => {
     setEditingCompany(c);
-    setName(c.name); setShortCode(c.shortCode); setLegalName(c.legalName); setAddress(c.address); setTaxId(c.taxId);
-    setContactName(c.contactName); setContactEmail(c.contactEmail); setContactPhone(c.contactPhone);
-    setDefaultCurrency(c.defaultCurrency); setColor(c.color || '#3b82f6');
+    setName(c.name);
+    setShortCode(c.shortCode || '');
+    setCompanyIdNumber(c.companyIdNumber || c.shortCode || '');
+    setLegalName(c.legalName || '');
+    setLegalId(c.legalId || '');
+    setTaxId(c.taxId || '');
+    setLocation(c.location || '');
+    setAddress(c.address || '');
+    setContactName(c.contactName || '');
+    setContactEmail(c.contactEmail || '');
+    setContactPhone(c.contactPhone || '');
+    setDefaultCurrency(c.defaultCurrency || 'USD');
+    setColor(c.color || '#3b82f6');
     setError('');
     setIsModalOpen(true);
   };
@@ -63,8 +88,11 @@ export const CompaniesPage: React.FC = () => {
         {
           id: editingCompany?.id,
           name: name.trim(),
-          shortCode: shortCode.trim().toUpperCase(),
-          legalName: legalName.trim(),
+          shortCode: (shortCode.trim() || name.substring(0, 4)).toUpperCase(),
+          companyIdNumber: companyIdNumber.trim() || undefined,
+          legalName: legalName.trim() || name.trim(),
+          legalId: legalId.trim() || undefined,
+          location: location.trim() || undefined,
           address: address.trim(),
           taxId: taxId.trim(),
           contactName: contactName.trim(),
@@ -93,6 +121,11 @@ export const CompaniesPage: React.FC = () => {
     }
   };
 
+  const getCurrencyDisplay = (code: string) => {
+    const match = COMPANY_CURRENCIES.find(c => c.value === code);
+    return match ? `${match.label}` : code;
+  };
+
   return (
     <div className="space-y-6">
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
@@ -102,7 +135,7 @@ export const CompaniesPage: React.FC = () => {
             Company Directory
           </h2>
           <p className="text-xs text-muted-foreground mt-0.5">
-            Manage the issuing entities requests are submitted under
+            Manage the issuing corporate entities, currencies, legal registrations, and operating locations
           </p>
         </div>
         {canManage && (
@@ -122,11 +155,11 @@ export const CompaniesPage: React.FC = () => {
                     className="w-9 h-9 rounded-xl flex items-center justify-center text-white font-bold text-xs shadow-xs shrink-0"
                     style={{ backgroundColor: c.color || '#3b82f6' }}
                   >
-                    {c.shortCode.substring(0, 4)}
+                    {c.shortCode ? c.shortCode.substring(0, 4) : c.name.substring(0, 3).toUpperCase()}
                   </div>
                   <div className="min-w-0">
                     <h3 className="text-sm font-bold text-foreground truncate">{c.name}</h3>
-                    <p className="text-[11px] text-muted-foreground truncate">{c.legalName}</p>
+                    <p className="text-[11px] text-muted-foreground truncate">{c.legalName || c.name}</p>
                   </div>
                 </div>
                 {canManage && (
@@ -141,10 +174,39 @@ export const CompaniesPage: React.FC = () => {
                 )}
               </div>
 
-              <div className="space-y-1.5 text-xs text-muted-foreground">
+              {/* Identity & Registry Badges */}
+              <div className="flex flex-wrap items-center gap-1.5 pt-0.5">
+                {(c.companyIdNumber || c.shortCode) && (
+                  <span className="font-mono text-[10px] px-2 py-0.5 rounded-md bg-muted/80 border border-border text-foreground font-semibold flex items-center gap-1" title="Company ID">
+                    <FileBadge className="w-3 h-3 text-primary" />
+                    ID: {c.companyIdNumber || c.shortCode}
+                  </span>
+                )}
+                {c.legalId && (
+                  <span className="font-mono text-[10px] px-2 py-0.5 rounded-md bg-muted/80 border border-border text-muted-foreground" title="Legal ID">
+                    Legal: {c.legalId}
+                  </span>
+                )}
+                {c.taxId && (
+                  <span className="font-mono text-[10px] px-2 py-0.5 rounded-md bg-muted/80 border border-border text-muted-foreground" title="Tax ID">
+                    Tax: {c.taxId}
+                  </span>
+                )}
+                <span className="font-mono text-[10px] px-2 py-0.5 rounded-md bg-primary/10 border border-primary/20 text-primary font-bold">
+                  {c.defaultCurrency}
+                </span>
+              </div>
+
+              <div className="space-y-1.5 text-xs text-muted-foreground pt-1">
+                {c.location && (
+                  <div className="flex items-center gap-1.5 font-medium text-foreground">
+                    <Globe className="w-3.5 h-3.5 shrink-0 text-primary" />
+                    <span className="truncate">{c.location}</span>
+                  </div>
+                )}
                 {c.address && (
                   <div className="flex items-start gap-1.5">
-                    <MapPin className="w-3.5 h-3.5 shrink-0 mt-0.5" />
+                    <MapPin className="w-3.5 h-3.5 shrink-0 mt-0.5 text-muted-foreground" />
                     <span className="line-clamp-2">{c.address}</span>
                   </div>
                 )}
@@ -157,24 +219,18 @@ export const CompaniesPage: React.FC = () => {
                 {c.contactPhone && (
                   <div className="flex items-center gap-1.5">
                     <Phone className="w-3.5 h-3.5 shrink-0" />
-                    <span>{c.contactPhone}</span>
+                    <span>{c.contactName ? `${c.contactName} · ` : ''}{c.contactPhone}</span>
                   </div>
                 )}
               </div>
-
-              <div className="pt-1 flex items-center justify-between text-[10px]">
-                <span className="font-mono px-2 py-0.5 rounded-full bg-muted border border-border text-muted-foreground">
-                  {c.taxId || 'No Tax ID'}
-                </span>
-                <span className="font-mono px-2 py-0.5 rounded-full bg-muted border border-border text-muted-foreground">
-                  {c.defaultCurrency}
-                </span>
-              </div>
             </div>
 
-            <div className="p-3 bg-muted/20 border-t border-border/60 flex items-center text-xs px-5">
+            <div className="p-3 bg-muted/20 border-t border-border/60 flex items-center justify-between text-xs px-5">
               <span className="flex items-center gap-1.5 text-[11px] text-emerald-600 dark:text-emerald-400 font-medium">
                 <CheckCircle2 className="w-3.5 h-3.5" /> {c.active ? 'Active' : 'Inactive'}
+              </span>
+              <span className="text-[11px] text-muted-foreground font-mono">
+                {getCurrencyDisplay(c.defaultCurrency)}
               </span>
             </div>
           </Card>
@@ -186,8 +242,8 @@ export const CompaniesPage: React.FC = () => {
         isOpen={isModalOpen}
         onClose={() => setIsModalOpen(false)}
         title={editingCompany ? 'Edit Company' : 'Add Company'}
-        description="Companies represent your side of a request — the issuing entity"
-        maxWidth="md"
+        description="Companies represent issuing entities with currency, tax ID, registration identifiers, and physical location"
+        maxWidth="lg"
       >
         <form onSubmit={handleSave} className="space-y-4">
           {error && (
@@ -196,29 +252,58 @@ export const CompaniesPage: React.FC = () => {
             </div>
           )}
 
-          <div className="grid grid-cols-2 gap-3">
-            <Input label="Company Name *" placeholder="e.g. RDX Global" value={name} onChange={(e) => setName(e.target.value)} required />
-            <Input label="Short Code" placeholder="e.g. RDXG" value={shortCode} onChange={(e) => setShortCode(e.target.value.toUpperCase())} />
+          {/* Core Name & Identifiers */}
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            <div className="sm:col-span-2">
+              <Input label="Company Name *" placeholder="e.g. RDX Global" value={name} onChange={(e) => setName(e.target.value)} required />
+            </div>
+            <Input label="Company ID" placeholder="e.g. CMP-10293" value={companyIdNumber} onChange={(e) => setCompanyIdNumber(e.target.value)} />
           </div>
 
-          <Input label="Legal Name" placeholder="e.g. RDX Global Holdings Inc." value={legalName} onChange={(e) => setLegalName(e.target.value)} />
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            <Input label="Short Code" placeholder="e.g. RDXG" value={shortCode} onChange={(e) => setShortCode(e.target.value.toUpperCase())} />
+            <div className="sm:col-span-2">
+              <Input label="Legal Name" placeholder="e.g. RDX Global Holdings Inc." value={legalName} onChange={(e) => setLegalName(e.target.value)} />
+            </div>
+          </div>
 
-          <div className="space-y-1.5">
-            <label className="block text-xs font-semibold uppercase tracking-wider text-muted-foreground">Address</label>
-            <textarea
-              rows={2}
-              value={address}
-              onChange={(e) => setAddress(e.target.value)}
-              placeholder="Street, city, state/province, postal code, country"
-              className="w-full bg-background border border-input rounded-lg px-3.5 py-2 text-xs text-foreground focus:outline-none focus:ring-2 focus:ring-primary/30"
+          {/* Legal ID, Tax ID & Currency Selection */}
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            <Input label="Legal ID" placeholder="e.g. LEI-9948201 / CR-84210" value={legalId} onChange={(e) => setLegalId(e.target.value)} />
+            <Input label="Tax ID" placeholder="e.g. US-EIN-84-1029384 / GB-VAT-123" value={taxId} onChange={(e) => setTaxId(e.target.value)} />
+            <Select
+              label="Currency *"
+              value={defaultCurrency}
+              onChange={(e) => setDefaultCurrency(e.target.value)}
+              options={COMPANY_CURRENCIES.map(curr => ({
+                label: curr.label,
+                value: curr.value
+              }))}
             />
           </div>
 
-          <div className="grid grid-cols-2 gap-3">
-            <Input label="Tax / GST Number" placeholder="e.g. US-EIN-84-1029384" value={taxId} onChange={(e) => setTaxId(e.target.value)} />
-            <Input label="Default Currency" placeholder="e.g. USD" value={defaultCurrency} onChange={(e) => setDefaultCurrency(e.target.value.toUpperCase())} />
+          {/* Location & Address */}
+          <div className="space-y-3">
+            <Input
+              label="Location"
+              placeholder="e.g. London, United Kingdom or Dubai, UAE"
+              value={location}
+              onChange={(e) => setLocation(e.target.value)}
+            />
+
+            <div className="space-y-1.5">
+              <label className="block text-xs font-semibold uppercase tracking-wider text-muted-foreground">Registered Address</label>
+              <textarea
+                rows={2}
+                value={address}
+                onChange={(e) => setAddress(e.target.value)}
+                placeholder="Street, city, state/province, postal code, country"
+                className="w-full bg-background border border-input rounded-lg px-3.5 py-2 text-xs text-foreground focus:outline-none focus:ring-2 focus:ring-primary/30"
+              />
+            </div>
           </div>
 
+          {/* Contact Details */}
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
             <Input label="Contact Name" placeholder="e.g. Alexander Vance" value={contactName} onChange={(e) => setContactName(e.target.value)} />
             <Input label="Contact Email" type="email" placeholder="name@company.com" value={contactEmail} onChange={(e) => setContactEmail(e.target.value)} />
@@ -261,7 +346,7 @@ export const CompaniesPage: React.FC = () => {
                 Are you sure you want to delete <span className="text-destructive font-mono">{companyToDelete?.name}</span>?
               </p>
               <p className="text-muted-foreground leading-relaxed">
-                This is blocked if any warehouses or requests are still linked to this company.
+                This is blocked if any requests are still linked to this company.
               </p>
             </div>
           </div>
