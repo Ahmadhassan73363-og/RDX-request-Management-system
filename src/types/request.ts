@@ -25,6 +25,7 @@ export interface SkuItem {
   sampleSkuTotal: number;
   sampleSkuCostPerUnitGbp?: number | '';
   sampleSkuTotalGbp?: number;
+  currency?: string;
 }
 
 export type RequestPriority = 'low' | 'normal' | 'high' | 'urgent';
@@ -74,6 +75,7 @@ export interface RequestRecord {
   deliveredAt?: string;
 
   // Specific FOC Sample Tracking Fields
+  currency?: string;          // 'GBP' | 'USD'
   date?: string;
   department?: string;
   agentOrTeamName?: string;

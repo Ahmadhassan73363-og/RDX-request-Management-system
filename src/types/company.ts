@@ -19,8 +19,20 @@ export interface Company {
 }
 
 export const COMPANY_CURRENCIES = [
-  { value: 'USD', label: 'Dollar (USD - $)', symbol: '$' },
-  { value: 'GBP', label: 'GB (GBP - £)', symbol: '£' },
-  { value: 'EUR', label: 'Euro (EUR - €)', symbol: '€' },
-  { value: 'AED', label: 'AED (AED - د.إ)', symbol: 'د.إ' },
+  { value: 'GBP', label: 'GBP (£)', symbol: '£' },
+  { value: 'USD', label: 'USD ($)', symbol: '$' },
+  { value: 'EUR', label: 'EUR (€)', symbol: '€' },
+  { value: 'AED', label: 'AED (د.إ)', symbol: 'د.إ' },
+  { value: 'CAD', label: 'CAD ($)', symbol: 'CA$' },
+  { value: 'AUD', label: 'AUD ($)', symbol: 'A$' },
 ] as const;
+
+export const getCurrencySymbol = (currencyCode?: string): string => {
+  if (!currencyCode) return '£';
+  const match = COMPANY_CURRENCIES.find(c => c.value === currencyCode);
+  if (match) return match.symbol;
+  if (currencyCode === 'GBP') return '£';
+  if (currencyCode === 'EUR') return '€';
+  if (currencyCode === 'AED') return 'د.إ';
+  return '$';
+};

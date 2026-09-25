@@ -11,9 +11,7 @@ import {
   Info,
   Users,
   Building2,
-  TrendingUp,
-  Tag,
-  UserCheck
+  Tag
 } from 'lucide-react';
 import { Modal } from '../../components/common/Modal';
 import { Button } from '../../components/common/Button';
@@ -25,6 +23,7 @@ import { useAuth } from '../../context/AuthContext';
 import { dataService } from '../../services/dataService';
 import { RequestPriority, SkuItem } from '../../types/request';
 import { FormSchema, FormField } from '../../types/form';
+import { COMPANY_CURRENCIES, getCurrencySymbol } from '../../types/company';
 
 interface NewRequestModalProps {
   isOpen: boolean;
@@ -37,7 +36,6 @@ interface SkuRow {
   sampleSku: string;
   sampleSkuQty: number | '';
   sampleSkuCostPerUnit: number | '';
-  sampleSkuCostPerUnitGbp: number | '';
 }
 
 export const NewRequestModal: React.FC<NewRequestModalProps> = ({ isOpen, onClose, onSuccess }) => {
@@ -115,8 +113,11 @@ export const NewRequestModal: React.FC<NewRequestModalProps> = ({ isOpen, onClos
   const [category, setCategory] = useState<'Sample' | 'Gift'>('Sample');
   // 7. System Invoice no.
   const [systemInvoiceNo, setSystemInvoiceNo] = useState('');
-  // 8. GBP Exchange Rate
-  const [gbpExchangeRate, setGbpExchangeRate] = useState<number | ''>(1.27);
+  // 8. Currency: Selectable (GBP, USD, EUR, AED, CAD, AUD, etc.)
+  const [currency, setCurrency] = useState<string>(() => {
+    const firstCo = dataService.getCompanies().filter(c => c.active)[0];
+    return firstCo?.defaultCurrency || 'GBP';
+  });
 
   // Department (kept for compatibility)
   const [department, setDepartment] = useState(currentUser.department || 'Commercial Sales');
@@ -150,10 +151,13 @@ export const NewRequestModal: React.FC<NewRequestModalProps> = ({ isOpen, onClos
     }
   }, [teamId]);
 
-  // When companyId changes, update ourCompanyName
+  // When companyId changes, update ourCompanyName and default currency
   useEffect(() => {
     const co = companies.find(c => c.id === companyId);
-    if (co) setOurCompanyName(co.name);
+    if (co) {
+      setOurCompanyName(co.name);
+      if (co.defaultCurrency) setCurrency(co.defaultCurrency);
+    }
   }, [companyId, companies]);
 
   const handleAgentChange = (userId: string) => {
@@ -170,9 +174,9 @@ export const NewRequestModal: React.FC<NewRequestModalProps> = ({ isOpen, onClos
     }
   };
 
-  // Multiple SKU Rows (now with GBP per unit)
+  // Multiple SKU Rows
   const [skuRows, setSkuRows] = useState<SkuRow[]>([
-    { id: 'sku-1', sampleSku: '', sampleSkuQty: 1, sampleSkuCostPerUnit: 50, sampleSkuCostPerUnitGbp: 40 }
+    { id: 'sku-1', sampleSku: '', sampleSkuQty: 1, sampleSkuCostPerUnit: 50 }
   ]);
 
   // General request metadata & comments
@@ -245,8 +249,7 @@ export const NewRequestModal: React.FC<NewRequestModalProps> = ({ isOpen, onClos
         id: 'sku-' + Date.now() + '-' + Math.random().toString(36).substring(2, 6),
         sampleSku: '',
         sampleSkuQty: 1,
-        sampleSkuCostPerUnit: 0,
-        sampleSkuCostPerUnitGbp: 0
+        sampleSkuCostPerUnit: ''
       }
     ]);
   };
@@ -259,50 +262,29 @@ export const NewRequestModal: React.FC<NewRequestModalProps> = ({ isOpen, onClos
   const handleUpdateSkuRow = (id: string, field: keyof SkuRow, value: any) => {
     setSkuRows(prev => prev.map(r => {
       if (r.id !== id) return r;
-      const updated = { ...r, [field]: value };
-      // Auto-calculate GBP from local cost when local cost changes
-      if (field === 'sampleSkuCostPerUnit' && gbpExchangeRate !== '') {
-        const localCost = Number(value) || 0;
-        updated.sampleSkuCostPerUnitGbp = Math.round(localCost / Number(gbpExchangeRate) * 100) / 100;
-      }
-      return updated;
+      return { ...r, [field]: value };
     }));
   };
 
-  // When GBP rate changes, recalculate all GBP per-unit costs
-  const handleGbpRateChange = (newRate: number | '') => {
-    setGbpExchangeRate(newRate);
-    if (newRate !== '' && Number(newRate) > 0) {
-      setSkuRows(prev => prev.map(r => ({
-        ...r,
-        sampleSkuCostPerUnitGbp: r.sampleSkuCostPerUnit !== ''
-          ? Math.round(Number(r.sampleSkuCostPerUnit) / Number(newRate) * 100) / 100
-          : ''
-      })));
-    }
-  };
-
   // Calculated items and totals
+  const currencySymbol = getCurrencySymbol(currency);
+
   const calculatedSkuItems: SkuItem[] = skuRows.map(r => {
     const qty = Number(r.sampleSkuQty) || 0;
     const unitCost = Number(r.sampleSkuCostPerUnit) || 0;
-    const unitCostGbp = Number(r.sampleSkuCostPerUnitGbp) || 0;
     const lineTotal = Math.round(qty * unitCost * 100) / 100;
-    const lineTotalGbp = Math.round(qty * unitCostGbp * 100) / 100;
     return {
       id: r.id,
       sampleSku: r.sampleSku,
       sampleSkuQty: r.sampleSkuQty,
       sampleSkuCostPerUnit: r.sampleSkuCostPerUnit,
       sampleSkuTotal: lineTotal,
-      sampleSkuCostPerUnitGbp: r.sampleSkuCostPerUnitGbp,
-      sampleSkuTotalGbp: lineTotalGbp
+      currency
     };
   });
 
   const totalSkuQty = calculatedSkuItems.reduce((acc, item) => acc + (Number(item.sampleSkuQty) || 0), 0);
   const grandSkuTotal = Math.round(calculatedSkuItems.reduce((acc, item) => acc + (item.sampleSkuTotal || 0), 0) * 100) / 100;
-  const grandSkuTotalGbp = Math.round(calculatedSkuItems.reduce((acc, item) => acc + (item.sampleSkuTotalGbp || 0), 0) * 100) / 100;
 
   // Selected team balance check
   const currentRemaining = selectedTeam ? selectedTeam.remainingBudget : 0;
@@ -359,11 +341,6 @@ export const NewRequestModal: React.FC<NewRequestModalProps> = ({ isOpen, onClos
         return;
       }
 
-      if (!gbpExchangeRate || Number(gbpExchangeRate) <= 0) {
-        setError('Please enter a valid GBP exchange rate (must be > 0)');
-        return;
-      }
-
       setIsSubmitting(true);
       try {
         const primarySku = calculatedSkuItems.map(s => s.sampleSku).filter(Boolean).join(', ');
@@ -383,13 +360,13 @@ export const NewRequestModal: React.FC<NewRequestModalProps> = ({ isOpen, onClos
               businessName,
               category,
               systemInvoiceNo,
+              currency,
               skuSummary: primarySku,
               totalSkuQty,
-              grandSkuTotal,
-              grandSkuTotalGbp,
-              gbpExchangeRate
+              grandSkuTotal
             },
             date,
+            currency,
             department,
             agentOrTeamName: agentName,
             agentName,
@@ -403,9 +380,6 @@ export const NewRequestModal: React.FC<NewRequestModalProps> = ({ isOpen, onClos
             sampleSkuQty: totalSkuQty,
             sampleSkuCostPerUnit: calculatedSkuItems[0]?.sampleSkuCostPerUnit !== '' ? Number(calculatedSkuItems[0]?.sampleSkuCostPerUnit) : 0,
             sampleSkuTotal: grandSkuTotal,
-            sampleSkuCostPerUnitGbp: calculatedSkuItems[0]?.sampleSkuCostPerUnitGbp !== '' ? Number(calculatedSkuItems[0]?.sampleSkuCostPerUnitGbp) : 0,
-            sampleSkuTotalGbp: grandSkuTotalGbp,
-            gbpExchangeRate: Number(gbpExchangeRate),
             skuItems: calculatedSkuItems,
 
             // Mapped fields for backwards compatibility
@@ -794,52 +768,36 @@ export const NewRequestModal: React.FC<NewRequestModalProps> = ({ isOpen, onClos
               />
             </div>
 
-            {/* ── SECTION: GBP EXCHANGE RATE ── */}
-            <div className="p-3.5 rounded-xl bg-card border border-border space-y-2">
-              <div className="flex items-center justify-between">
-                <span className="text-xs font-bold text-foreground flex items-center gap-1.5">
-                  <TrendingUp className="w-4 h-4 text-primary" />
-                  GBP Exchange Rate
-                </span>
-                <span className="text-[10px] text-muted-foreground">
-                  Used to auto-calculate GBP equivalents for each SKU line
-                </span>
-              </div>
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 items-end">
-                <div className="sm:col-span-1">
-                  <label className="block text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-1.5">
-                    1 GBP = ? {currencyLabel} *
-                  </label>
-                  <div className="relative">
-                    <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-xs font-bold text-muted-foreground">£→</span>
-                    <input
-                      type="number"
-                      min="0.001"
-                      step="0.0001"
-                      placeholder="e.g. 1.2700"
-                      value={gbpExchangeRate}
-                      onChange={(e) => handleGbpRateChange(e.target.value === '' ? '' : Number(e.target.value))}
-                      className="w-full h-10 pl-10 pr-3.5 bg-background border border-input rounded-lg text-sm font-mono text-foreground focus:outline-none focus:ring-2 focus:ring-primary/30"
-                      required
-                    />
-                  </div>
-                </div>
-                <div className="sm:col-span-2 p-2.5 rounded-lg bg-amber-500/10 border border-amber-500/20 text-[11px] text-amber-700 dark:text-amber-400">
-                  <p className="font-semibold">How GBP conversion works:</p>
-                  <p>Per Unit GBP = Local Cost ÷ Exchange Rate. E.g. $50 ÷ 1.27 = £39.37</p>
-                </div>
-              </div>
-            </div>
 
             {/* ── SECTION: SKU CALCULATORS ── */}
             <div className="p-4 rounded-xl bg-muted/40 border border-border/80 space-y-4">
-              <div className="flex items-center justify-between">
+              {/* Header: title + Currency Selector + Add button */}
+              <div className="flex flex-wrap items-center gap-3 justify-between">
                 <div className="flex items-center gap-1.5">
                   <Calculator className="w-4 h-4 text-primary" />
                   <span className="text-xs font-bold text-foreground">
-                    Sample SKU Calculator ({skuRows.length} SKU{skuRows.length !== 1 ? 's' : ''})
+                    Sample SKU Calculator ({skuRows.length})
                   </span>
                 </div>
+
+                {/* Direct Currency Dropdown */}
+                <div className="flex items-center gap-2">
+                  <label className="text-xs font-semibold text-muted-foreground whitespace-nowrap">
+                    Currency:
+                  </label>
+                  <select
+                    value={currency}
+                    onChange={(e) => setCurrency(e.target.value)}
+                    className="h-8 px-2.5 bg-background border border-input rounded-lg text-xs font-bold text-foreground focus:outline-none focus:ring-2 focus:ring-primary/30"
+                  >
+                    {COMPANY_CURRENCIES.map(curr => (
+                      <option key={curr.value} value={curr.value}>
+                        {curr.label}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
                 <Button
                   type="button"
                   variant="outline"
@@ -848,31 +806,20 @@ export const NewRequestModal: React.FC<NewRequestModalProps> = ({ isOpen, onClos
                   leftIcon={<Plus className="w-3.5 h-3.5 text-primary" />}
                   className="text-xs font-semibold"
                 >
-                  Add SKU Item
+                  Add SKU
                 </Button>
-              </div>
-
-              {/* Column headers */}
-              <div className="hidden sm:grid sm:grid-cols-6 gap-2 px-1">
-                <div className="sm:col-span-2 text-[10px] font-bold uppercase text-muted-foreground tracking-wider">Sample SKU</div>
-                <div className="text-[10px] font-bold uppercase text-muted-foreground tracking-wider">QTY</div>
-                <div className="text-[10px] font-bold uppercase text-muted-foreground tracking-wider">Cost/{currencyLabel}</div>
-                <div className="text-[10px] font-bold uppercase text-muted-foreground tracking-wider">Cost/GBP</div>
-                <div className="text-[10px] font-bold uppercase text-muted-foreground tracking-wider">Total {currencyLabel}</div>
               </div>
 
               <div className="space-y-3">
                 {skuRows.map((row, index) => {
                   const qty = Number(row.sampleSkuQty) || 0;
                   const unitCost = Number(row.sampleSkuCostPerUnit) || 0;
-                  const unitCostGbp = Number(row.sampleSkuCostPerUnitGbp) || 0;
                   const lineTotal = Math.round(qty * unitCost * 100) / 100;
-                  const lineTotalGbp = Math.round(qty * unitCostGbp * 100) / 100;
 
                   return (
                     <div
                       key={row.id}
-                      className="p-3.5 rounded-lg bg-background border border-border/70 space-y-3 shadow-2xs relative"
+                      className="p-3.5 rounded-lg bg-background border border-border/70 space-y-2 shadow-2xs"
                     >
                       <div className="flex items-center justify-between">
                         <span className="text-[11px] font-bold text-muted-foreground uppercase tracking-wider">
@@ -883,16 +830,16 @@ export const NewRequestModal: React.FC<NewRequestModalProps> = ({ isOpen, onClos
                             type="button"
                             onClick={() => handleRemoveSkuRow(row.id)}
                             className="p-1 text-muted-foreground hover:text-destructive transition-colors rounded-md"
-                            title="Remove SKU Item"
+                            title="Remove"
                           >
-                            <Trash2 className="w-4 h-4" />
+                            <Trash2 className="w-3.5 h-3.5" />
                           </button>
                         )}
                       </div>
 
-                      <div className="grid grid-cols-2 sm:grid-cols-6 gap-3 items-end">
+                      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 items-end">
                         {/* SKU Code */}
-                        <div className="col-span-2 sm:col-span-2">
+                        <div className="col-span-2 sm:col-span-1">
                           <Input
                             label="Sample SKU *"
                             placeholder="e.g. SKU-RDX-8821"
@@ -909,57 +856,43 @@ export const NewRequestModal: React.FC<NewRequestModalProps> = ({ isOpen, onClos
                             type="number"
                             min="1"
                             step="1"
-                            placeholder="5"
+                            placeholder="1"
                             value={row.sampleSkuQty}
                             onChange={(e) => handleUpdateSkuRow(row.id, 'sampleSkuQty', e.target.value === '' ? '' : Number(e.target.value))}
                             required
                           />
                         </div>
 
-                        {/* Cost per unit (local currency) */}
+                        {/* Cost per unit: label matches selected currency */}
                         <div>
                           <label className="block text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-1.5">
-                            Per Unit ({currencyLabel}) *
+                            Cost Per Unit ({currency}) *
                           </label>
-                          <input
-                            type="number"
-                            min="0"
-                            step="0.01"
-                            placeholder="25.00"
-                            value={row.sampleSkuCostPerUnit}
-                            onChange={(e) => handleUpdateSkuRow(row.id, 'sampleSkuCostPerUnit', e.target.value === '' ? '' : Number(e.target.value))}
-                            required
-                            className="w-full h-10 px-3 bg-background border border-input rounded-lg text-xs sm:text-sm font-mono text-foreground focus:outline-none focus:ring-2 focus:ring-primary/30"
-                          />
-                        </div>
-
-                        {/* Cost per unit GBP */}
-                        <div>
-                          <label className="block text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-1.5">
-                            Per Unit (GBP)
-                          </label>
-                          <input
-                            type="number"
-                            min="0"
-                            step="0.01"
-                            placeholder="£ auto"
-                            value={row.sampleSkuCostPerUnitGbp}
-                            onChange={(e) => handleUpdateSkuRow(row.id, 'sampleSkuCostPerUnitGbp', e.target.value === '' ? '' : Number(e.target.value))}
-                            className="w-full h-10 px-3 bg-amber-50 dark:bg-amber-950/20 border border-amber-300/60 dark:border-amber-700/40 rounded-lg text-xs sm:text-sm font-mono text-foreground focus:outline-none focus:ring-2 focus:ring-amber-400/30"
-                          />
-                        </div>
-
-                        {/* Line total display */}
-                        <div>
-                          <label className="block text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-1.5">
-                            Total ({currencyLabel})
-                          </label>
-                          <div className="h-10 px-3 bg-muted/40 border border-border rounded-lg flex flex-col items-start justify-center">
-                            <span className="font-mono font-bold text-sm text-foreground leading-tight">
-                              {lineTotal.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                          <div className="relative">
+                            <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground font-mono text-xs">
+                              {currencySymbol}
                             </span>
-                            <span className="text-[9px] font-mono text-amber-600 dark:text-amber-400 leading-tight">
-                              £{lineTotalGbp.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                            <input
+                              type="number"
+                              min="0"
+                              step="0.01"
+                              placeholder="0.00"
+                              value={row.sampleSkuCostPerUnit}
+                              onChange={(e) => handleUpdateSkuRow(row.id, 'sampleSkuCostPerUnit', e.target.value === '' ? '' : Number(e.target.value))}
+                              required
+                              className="w-full h-10 pl-7 pr-3 bg-background border border-input rounded-lg text-sm font-mono text-foreground focus:outline-none focus:ring-2 focus:ring-primary/30"
+                            />
+                          </div>
+                        </div>
+
+                        {/* Line total */}
+                        <div>
+                          <label className="block text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-1.5">
+                            Total ({currency})
+                          </label>
+                          <div className="h-10 px-3 bg-muted/40 border border-border rounded-lg flex flex-col justify-center">
+                            <span className="font-mono font-bold text-sm text-foreground leading-tight">
+                              {currencySymbol}{lineTotal.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                             </span>
                           </div>
                         </div>
@@ -970,28 +903,17 @@ export const NewRequestModal: React.FC<NewRequestModalProps> = ({ isOpen, onClos
               </div>
 
               {/* Grand Total Banner */}
-              <div className="p-3.5 rounded-lg bg-card border-2 border-primary/30 grid grid-cols-2 gap-3 shadow-xs">
+              <div className="p-3.5 rounded-xl bg-card border-2 border-primary/30 flex items-center justify-between shadow-xs">
                 <div>
                   <div className="text-[10px] font-bold uppercase text-muted-foreground tracking-wider mb-0.5">
-                    Grand Total ({currencyLabel})
+                    Grand Total ({currency})
                   </div>
-                  <div className="text-lg font-extrabold font-mono text-primary">
-                    {grandSkuTotal.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                  </div>
-                  <div className="text-[10px] text-muted-foreground">
-                    {totalSkuQty} units across {skuRows.length} SKU{skuRows.length !== 1 ? 's' : ''}
+                  <div className="text-xl font-extrabold font-mono text-primary">
+                    {currencySymbol}{grandSkuTotal.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                   </div>
                 </div>
-                <div className="border-l border-border/60 pl-3">
-                  <div className="text-[10px] font-bold uppercase text-muted-foreground tracking-wider mb-0.5">
-                    Grand Total (GBP £)
-                  </div>
-                  <div className="text-lg font-extrabold font-mono text-amber-600 dark:text-amber-400">
-                    £{grandSkuTotalGbp.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                  </div>
-                  <div className="text-[10px] text-muted-foreground">
-                    At rate 1 GBP = {gbpExchangeRate} {currencyLabel}
-                  </div>
+                <div className="text-xs text-muted-foreground text-right">
+                  <span className="font-bold text-foreground">{totalSkuQty}</span> total unit{totalSkuQty !== 1 ? 's' : ''} across <span className="font-bold text-foreground">{skuRows.length}</span> SKU{skuRows.length !== 1 ? 's' : ''}
                 </div>
               </div>
 

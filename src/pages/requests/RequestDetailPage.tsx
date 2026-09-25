@@ -23,6 +23,7 @@ import {
   RotateCcw
 } from 'lucide-react';
 import { RequestRecord, RequestStatus, ShipmentStatus } from '../../types/request';
+import { getCurrencySymbol } from '../../types/company';
 import { useAuth } from '../../context/AuthContext';
 import { dataService } from '../../services/dataService';
 import { Button } from '../../components/common/Button';
@@ -358,9 +359,9 @@ export const RequestDetailPage: React.FC<RequestDetailPageProps> = ({ requestId,
                   <p className="text-sm font-mono font-bold text-foreground">{request.systemInvoiceNo || 'N/A'}</p>
                 </div>
                 <div className="space-y-1">
-                  <span className="text-muted-foreground uppercase tracking-wider font-semibold text-[10px]">GBP Exchange Rate</span>
+                  <span className="text-muted-foreground uppercase tracking-wider font-semibold text-[10px]">Currency</span>
                   <p className="text-sm font-mono font-bold text-foreground">
-                    {request.gbpExchangeRate ? `1 GBP = ${request.gbpExchangeRate}` : '—'}
+                    {request.currency || 'GBP'}
                   </p>
                 </div>
               </div>
@@ -372,33 +373,39 @@ export const RequestDetailPage: React.FC<RequestDetailPageProps> = ({ requestId,
                 {/* Multi-SKU table if available */}
                 {request.skuItems && request.skuItems.length > 0 ? (
                   <div className="space-y-2">
-                    <div className="hidden sm:grid sm:grid-cols-6 gap-2 px-1">
+                    <div className="hidden sm:grid sm:grid-cols-5 gap-2 px-1">
                       <div className="sm:col-span-2 text-[10px] font-bold uppercase text-muted-foreground tracking-wider">SKU Code</div>
                       <div className="text-[10px] font-bold uppercase text-muted-foreground tracking-wider">QTY</div>
-                      <div className="text-[10px] font-bold uppercase text-muted-foreground tracking-wider">Per Unit</div>
-                      <div className="text-[10px] font-bold uppercase text-muted-foreground tracking-wider">Per Unit (£)</div>
-                      <div className="text-[10px] font-bold uppercase text-muted-foreground tracking-wider">Total</div>
+                      <div className="text-[10px] font-bold uppercase text-muted-foreground tracking-wider">
+                        Per Unit ({request.currency || 'GBP'})
+                      </div>
+                      <div className="text-[10px] font-bold uppercase text-muted-foreground tracking-wider">
+                        Total ({request.currency || 'GBP'})
+                      </div>
                     </div>
-                    {request.skuItems.map((item, i) => (
-                      <div key={item.id || i} className="grid grid-cols-3 sm:grid-cols-6 gap-2 p-2 bg-background rounded-lg border border-border/60 text-xs">
-                        <div className="col-span-3 sm:col-span-2 font-mono font-semibold text-foreground">{item.sampleSku}</div>
-                        <div className="font-mono text-foreground">{Number(item.sampleSkuQty) || 0}</div>
-                        <div className="font-mono text-foreground">${(Number(item.sampleSkuCostPerUnit) || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>
-                        <div className="font-mono text-amber-600 dark:text-amber-400">
-                          {item.sampleSkuCostPerUnitGbp !== undefined ? `£${(Number(item.sampleSkuCostPerUnitGbp) || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : '—'}
+                    {request.skuItems.map((item, i) => {
+                      const sym = getCurrencySymbol(request.currency);
+                      return (
+                        <div key={item.id || i} className="grid grid-cols-2 sm:grid-cols-5 gap-2 p-2 bg-background rounded-lg border border-border/60 text-xs items-center">
+                          <div className="col-span-2 font-mono font-semibold text-foreground">{item.sampleSku}</div>
+                          <div className="font-mono text-foreground">{Number(item.sampleSkuQty) || 0}</div>
+                          <div className="font-mono text-foreground">
+                            {sym}{(Number(item.sampleSkuCostPerUnit) || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                          </div>
+                          <div className="font-mono font-bold text-primary">
+                            {sym}{(item.sampleSkuTotal || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                          </div>
                         </div>
-                        <div className="font-mono font-bold text-primary">${(item.sampleSkuTotal || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>
-                      </div>
-                    ))}
+                      );
+                    })}
                     {/* Totals row */}
-                    <div className="grid grid-cols-3 sm:grid-cols-6 gap-2 p-2 bg-primary/5 rounded-lg border border-primary/20 text-xs font-bold">
-                      <div className="col-span-3 sm:col-span-2 text-foreground">Grand Total</div>
+                    <div className="grid grid-cols-2 sm:grid-cols-5 gap-2 p-2 bg-primary/5 rounded-lg border border-primary/20 text-xs font-bold items-center">
+                      <div className="col-span-2 text-foreground">Grand Total</div>
                       <div className="text-foreground">{request.sampleSkuQty ?? 0} units</div>
-                      <div className="text-foreground">—</div>
-                      <div className="text-amber-600 dark:text-amber-400">
-                        {request.sampleSkuTotalGbp !== undefined ? `£${(request.sampleSkuTotalGbp || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : '—'}
+                      <div className="text-muted-foreground">—</div>
+                      <div className="text-primary font-mono text-sm">
+                        {getCurrencySymbol(request.currency)}{(request.sampleSkuTotal || request.budgetAmount || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                       </div>
-                      <div className="text-primary font-mono">${(request.sampleSkuTotal || request.budgetAmount || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>
                     </div>
                   </div>
                 ) : (
@@ -414,19 +421,13 @@ export const RequestDetailPage: React.FC<RequestDetailPageProps> = ({ requestId,
                     <div>
                       <span className="text-[10px] text-muted-foreground">Cost per Unit:</span>
                       <p className="font-semibold text-foreground font-mono">
-                        ${((request.sampleSkuCostPerUnit !== undefined ? request.sampleSkuCostPerUnit : request.budgetAmount) || 0).toLocaleString()}
-                        {request.sampleSkuCostPerUnitGbp !== undefined && (
-                          <span className="ml-1 text-amber-600 dark:text-amber-400">/ £{(request.sampleSkuCostPerUnitGbp || 0).toLocaleString()}</span>
-                        )}
+                        {getCurrencySymbol(request.currency)}{((request.sampleSkuCostPerUnit !== undefined ? request.sampleSkuCostPerUnit : request.budgetAmount) || 0).toLocaleString()}
                       </p>
                     </div>
                     <div>
-                      <span className="text-[10px] text-muted-foreground">Total ({request.sampleSkuTotalGbp !== undefined ? '/ GBP' : ''}):</span>
+                      <span className="text-[10px] text-muted-foreground">Total:</span>
                       <p className="font-bold font-mono">
-                        <span className="text-primary">${((request.sampleSkuTotal !== undefined ? request.sampleSkuTotal : request.budgetAmount) || 0).toLocaleString()}</span>
-                        {request.sampleSkuTotalGbp !== undefined && (
-                          <span className="ml-1 text-amber-600 dark:text-amber-400">/ £{(request.sampleSkuTotalGbp || 0).toLocaleString()}</span>
-                        )}
+                        <span className="text-primary">{getCurrencySymbol(request.currency)}{((request.sampleSkuTotal !== undefined ? request.sampleSkuTotal : request.budgetAmount) || 0).toLocaleString()}</span>
                       </p>
                     </div>
                   </div>

@@ -866,6 +866,7 @@ class DataService {
 
   public createRequest(
     payload: {
+      currency?: string;
       date?: string;
       department?: string;
       agentOrTeamName?: string;
@@ -985,6 +986,7 @@ class DataService {
       currentApproverRole: 'Executive',
       shipmentStatus: undefined,
       date: effectiveDate,
+      currency: payload.currency || 'GBP',
       department: payload.department || team.name,
       agentOrTeamName: payload.agentOrTeamName || actor.name,
       businessName: effectiveCompany,
