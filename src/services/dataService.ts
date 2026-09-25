@@ -146,17 +146,26 @@ class DataService {
     }
     // Also ensure any team missing allocatedBudget is patched with 0 (defensive)
     const teams = storage.get<any[]>('teams', INITIAL_TEAMS);
-    const patched = teams.map(t => ({
-      ...t,
-      allocatedBudget: t.allocatedBudget ?? t.totalAllocatedBudget ?? 0,
-      spentBudget: t.spentBudget ?? 0,
-      remainingBudget: t.remainingBudget ?? Math.max(0, (t.allocatedBudget ?? t.totalAllocatedBudget ?? 0) - (t.spentBudget ?? 0)),
-      active: t.active ?? true,
-      memberCount: t.memberCount ?? 0,
-      currency: t.currency ?? '$',
-      code: t.code ?? 'TEAM',
-      leadName: t.leadName ?? '',
-    }));
+    const patched = teams.map(t => {
+      // Schema v3 migration: add team type (B2B/B2C) if missing
+      let teamType = t.type;
+      if (!teamType) {
+        const initMatch = INITIAL_TEAMS.find(it => it.id === t.id || it.name === t.name);
+        teamType = initMatch?.type || 'B2B';
+      }
+      return {
+        ...t,
+        type: teamType,
+        allocatedBudget: t.allocatedBudget ?? t.totalAllocatedBudget ?? 0,
+        spentBudget: t.spentBudget ?? 0,
+        remainingBudget: t.remainingBudget ?? Math.max(0, (t.allocatedBudget ?? t.totalAllocatedBudget ?? 0) - (t.spentBudget ?? 0)),
+        active: t.active ?? true,
+        memberCount: t.memberCount ?? 0,
+        currency: t.currency ?? '$',
+        code: t.code ?? 'TEAM',
+        leadName: t.leadName ?? '',
+      };
+    });
     storage.set('teams', patched);
 
     // Branding migration: force-patch stale names to RDX Request & Budget Management System
@@ -691,6 +700,7 @@ class DataService {
         name: teamData.name,
         code: teamData.code || teamData.name.substring(0, 4).toUpperCase(),
         description: teamData.description || 'Enterprise functional team',
+        type: teamData.type || 'B2B',
         leadId: teamData.leadId || actor.id,
         leadName: teamData.leadName || actor.name,
         leadEmail: teamData.leadEmail || actor.email,
@@ -859,13 +869,20 @@ class DataService {
       date?: string;
       department?: string;
       agentOrTeamName?: string;
+      agentName?: string;          // Selected staff member name
+      agentUserId?: string;        // Selected staff member user ID
+      ourCompanyName?: string;     // Our company name (issuing)
       businessName?: string;
+      category?: 'Sample' | 'Gift'; // Sample or Gift classification
       typeOfFoc?: string;
       systemInvoiceNo?: string | number;
       sampleSku?: string;
       sampleSkuQty?: number;
       sampleSkuCostPerUnit?: number;
       sampleSkuTotal?: number;
+      sampleSkuCostPerUnitGbp?: number;
+      sampleSkuTotalGbp?: number;
+      gbpExchangeRate?: number;
       skuItems?: SkuItem[];
 
       customerName?: string;
@@ -977,6 +994,13 @@ class DataService {
       sampleSkuQty: numQty,
       sampleSkuCostPerUnit: numCostPerUnit,
       sampleSkuTotal: calculatedSkuTotal,
+      sampleSkuCostPerUnitGbp: payload.sampleSkuCostPerUnitGbp,
+      sampleSkuTotalGbp: payload.sampleSkuTotalGbp,
+      gbpExchangeRate: payload.gbpExchangeRate,
+      agentName: payload.agentName || payload.agentOrTeamName,
+      agentUserId: payload.agentUserId,
+      ourCompanyName: payload.ourCompanyName || payload.companyName,
+      category: payload.category,
       skuItems: payload.skuItems || [],
       teamRemainingBudgetAtRequest: remainingBudget,
       budgetAfterApproval,

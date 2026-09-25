@@ -51,6 +51,7 @@ export const RequestDetailPage: React.FC<RequestDetailPageProps> = ({ requestId,
     name: request.teamName || 'Unassigned team',
     code: '',
     description: '',
+    type: 'B2B' as const,
     leadId: '',
     leadName: '',
     allocatedBudget: 0,
@@ -308,55 +309,128 @@ export const RequestDetailPage: React.FC<RequestDetailPageProps> = ({ requestId,
                   <p className="text-sm font-bold text-foreground">{request.date || request.requestDate}</p>
                 </div>
                 <div className="space-y-1">
-                  <span className="text-muted-foreground uppercase tracking-wider font-semibold text-[10px]">Department</span>
-                  <p className="text-sm font-bold text-foreground">{request.department || team.name}</p>
+                  <span className="text-muted-foreground uppercase tracking-wider font-semibold text-[10px]">Team</span>
+                  <p className="text-sm font-bold text-foreground flex items-center gap-1.5">
+                    {team?.name || request.teamName}
+                    {(team as any)?.type && (
+                      <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded uppercase ${
+                        (team as any).type === 'B2C'
+                          ? 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400'
+                          : 'bg-blue-500/15 text-blue-600 dark:text-blue-400'
+                      }`}>{(team as any).type}</span>
+                    )}
+                  </p>
                 </div>
                 <div className="space-y-1">
-                  <span className="text-muted-foreground uppercase tracking-wider font-semibold text-[10px]">Agent / Team Name</span>
-                  <p className="text-sm font-bold text-foreground">{request.agentOrTeamName || request.customerName}</p>
+                  <span className="text-muted-foreground uppercase tracking-wider font-semibold text-[10px]">Agent / Staff Member</span>
+                  <p className="text-sm font-bold text-foreground">{request.agentName || request.agentOrTeamName || request.customerName}</p>
                 </div>
               </div>
 
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 text-xs pt-1 border-t border-border/60">
                 <div className="space-y-1">
-                  <span className="text-muted-foreground uppercase tracking-wider font-semibold text-[10px]">Business Name</span>
+                  <span className="text-muted-foreground uppercase tracking-wider font-semibold text-[10px]">Our Company Name</span>
+                  <p className="text-sm font-bold text-foreground">{request.ourCompanyName || request.companyName || '—'}</p>
+                </div>
+                <div className="space-y-1">
+                  <span className="text-muted-foreground uppercase tracking-wider font-semibold text-[10px]">Business Name (Customer)</span>
                   <p className="text-sm font-bold text-foreground">{request.businessName || request.customerCompany}</p>
                 </div>
                 <div className="space-y-1">
-                  <span className="text-muted-foreground uppercase tracking-wider font-semibold text-[10px]">Type of FOC</span>
-                  <p className="text-sm font-bold text-foreground">{request.typeOfFoc || request.requestCategory}</p>
+                  <span className="text-muted-foreground uppercase tracking-wider font-semibold text-[10px]">Category</span>
+                  <p className="text-sm font-bold text-foreground">
+                    {request.category ? (
+                      <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-bold ${
+                        request.category === 'Sample'
+                          ? 'bg-primary/10 text-primary'
+                          : 'bg-amber-500/10 text-amber-700 dark:text-amber-400'
+                      }`}>
+                        {request.category === 'Sample' ? '🧪' : '🎁'} {request.category}
+                      </span>
+                    ) : (request.typeOfFoc || request.requestCategory || '—')}
+                  </p>
                 </div>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-xs pt-1 border-t border-border/60">
                 <div className="space-y-1">
                   <span className="text-muted-foreground uppercase tracking-wider font-semibold text-[10px]">System Invoice No.</span>
                   <p className="text-sm font-mono font-bold text-foreground">{request.systemInvoiceNo || 'N/A'}</p>
                 </div>
+                <div className="space-y-1">
+                  <span className="text-muted-foreground uppercase tracking-wider font-semibold text-[10px]">GBP Exchange Rate</span>
+                  <p className="text-sm font-mono font-bold text-foreground">
+                    {request.gbpExchangeRate ? `1 GBP = ${request.gbpExchangeRate}` : '—'}
+                  </p>
+                </div>
               </div>
 
               {/* Sample SKU Details Box */}
-              <div className="p-3.5 rounded-xl bg-muted/40 border border-border/80 space-y-2">
+              <div className="p-3.5 rounded-xl bg-muted/40 border border-border/80 space-y-3">
                 <span className="text-muted-foreground uppercase tracking-wider font-semibold text-[10px]">Sample SKU Breakdown</span>
-                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs">
-                  <div>
-                    <span className="text-[10px] text-muted-foreground">Sample SKU:</span>
-                    <p className="font-semibold text-foreground truncate">{request.sampleSku || request.requestItem}</p>
+
+                {/* Multi-SKU table if available */}
+                {request.skuItems && request.skuItems.length > 0 ? (
+                  <div className="space-y-2">
+                    <div className="hidden sm:grid sm:grid-cols-6 gap-2 px-1">
+                      <div className="sm:col-span-2 text-[10px] font-bold uppercase text-muted-foreground tracking-wider">SKU Code</div>
+                      <div className="text-[10px] font-bold uppercase text-muted-foreground tracking-wider">QTY</div>
+                      <div className="text-[10px] font-bold uppercase text-muted-foreground tracking-wider">Per Unit</div>
+                      <div className="text-[10px] font-bold uppercase text-muted-foreground tracking-wider">Per Unit (£)</div>
+                      <div className="text-[10px] font-bold uppercase text-muted-foreground tracking-wider">Total</div>
+                    </div>
+                    {request.skuItems.map((item, i) => (
+                      <div key={item.id || i} className="grid grid-cols-3 sm:grid-cols-6 gap-2 p-2 bg-background rounded-lg border border-border/60 text-xs">
+                        <div className="col-span-3 sm:col-span-2 font-mono font-semibold text-foreground">{item.sampleSku}</div>
+                        <div className="font-mono text-foreground">{Number(item.sampleSkuQty) || 0}</div>
+                        <div className="font-mono text-foreground">${(Number(item.sampleSkuCostPerUnit) || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>
+                        <div className="font-mono text-amber-600 dark:text-amber-400">
+                          {item.sampleSkuCostPerUnitGbp !== undefined ? `£${(Number(item.sampleSkuCostPerUnitGbp) || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : '—'}
+                        </div>
+                        <div className="font-mono font-bold text-primary">${(item.sampleSkuTotal || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>
+                      </div>
+                    ))}
+                    {/* Totals row */}
+                    <div className="grid grid-cols-3 sm:grid-cols-6 gap-2 p-2 bg-primary/5 rounded-lg border border-primary/20 text-xs font-bold">
+                      <div className="col-span-3 sm:col-span-2 text-foreground">Grand Total</div>
+                      <div className="text-foreground">{request.sampleSkuQty ?? 0} units</div>
+                      <div className="text-foreground">—</div>
+                      <div className="text-amber-600 dark:text-amber-400">
+                        {request.sampleSkuTotalGbp !== undefined ? `£${(request.sampleSkuTotalGbp || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : '—'}
+                      </div>
+                      <div className="text-primary font-mono">${(request.sampleSkuTotal || request.budgetAmount || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>
+                    </div>
                   </div>
-                  <div>
-                    <span className="text-[10px] text-muted-foreground">QTY:</span>
-                    <p className="font-semibold text-foreground font-mono">{request.sampleSkuQty ?? 1}</p>
+                ) : (
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs">
+                    <div>
+                      <span className="text-[10px] text-muted-foreground">Sample SKU:</span>
+                      <p className="font-semibold text-foreground truncate">{request.sampleSku || request.requestItem}</p>
+                    </div>
+                    <div>
+                      <span className="text-[10px] text-muted-foreground">QTY:</span>
+                      <p className="font-semibold text-foreground font-mono">{request.sampleSkuQty ?? 1}</p>
+                    </div>
+                    <div>
+                      <span className="text-[10px] text-muted-foreground">Cost per Unit:</span>
+                      <p className="font-semibold text-foreground font-mono">
+                        ${((request.sampleSkuCostPerUnit !== undefined ? request.sampleSkuCostPerUnit : request.budgetAmount) || 0).toLocaleString()}
+                        {request.sampleSkuCostPerUnitGbp !== undefined && (
+                          <span className="ml-1 text-amber-600 dark:text-amber-400">/ £{(request.sampleSkuCostPerUnitGbp || 0).toLocaleString()}</span>
+                        )}
+                      </p>
+                    </div>
+                    <div>
+                      <span className="text-[10px] text-muted-foreground">Total ({request.sampleSkuTotalGbp !== undefined ? '/ GBP' : ''}):</span>
+                      <p className="font-bold font-mono">
+                        <span className="text-primary">${((request.sampleSkuTotal !== undefined ? request.sampleSkuTotal : request.budgetAmount) || 0).toLocaleString()}</span>
+                        {request.sampleSkuTotalGbp !== undefined && (
+                          <span className="ml-1 text-amber-600 dark:text-amber-400">/ £{(request.sampleSkuTotalGbp || 0).toLocaleString()}</span>
+                        )}
+                      </p>
+                    </div>
                   </div>
-                  <div>
-                    <span className="text-[10px] text-muted-foreground">Cost per Unit:</span>
-                    <p className="font-semibold text-foreground font-mono">
-                      ${((request.sampleSkuCostPerUnit !== undefined ? request.sampleSkuCostPerUnit : request.budgetAmount) || 0).toLocaleString()}
-                    </p>
-                  </div>
-                  <div>
-                    <span className="text-[10px] text-muted-foreground">Sample SKU Total:</span>
-                    <p className="font-bold text-primary font-mono">
-                      ${((request.sampleSkuTotal !== undefined ? request.sampleSkuTotal : request.budgetAmount) || 0).toLocaleString()}
-                    </p>
-                  </div>
-                </div>
+                )}
               </div>
 
               {/* Rationale */}

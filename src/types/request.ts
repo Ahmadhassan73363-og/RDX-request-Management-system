@@ -23,6 +23,8 @@ export interface SkuItem {
   sampleSkuQty: number | '';
   sampleSkuCostPerUnit: number | '';
   sampleSkuTotal: number;
+  sampleSkuCostPerUnitGbp?: number | '';
+  sampleSkuTotalGbp?: number;
 }
 
 export type RequestPriority = 'low' | 'normal' | 'high' | 'urgent';
@@ -75,13 +77,21 @@ export interface RequestRecord {
   date?: string;
   department?: string;
   agentOrTeamName?: string;
+  agentName?: string;         // Selected staff member name
+  agentUserId?: string;       // Selected staff member user ID
+  ourCompanyName?: string;    // Our company name (issuing company)
   businessName?: string;
-  typeOfFoc?: string;
+  category?: 'Sample' | 'Gift'; // Whether item is Sample or Gift
+  typeOfFoc?: string;          // Legacy / extra description
   systemInvoiceNo?: string | number;
   sampleSku?: string;
   sampleSkuQty?: number;
   sampleSkuCostPerUnit?: number;
   sampleSkuTotal?: number;
+  // GBP converted amounts
+  sampleSkuCostPerUnitGbp?: number;
+  sampleSkuTotalGbp?: number;
+  gbpExchangeRate?: number;   // Rate used for GBP conversion
 
   // Multiple SKU Breakdown
   skuItems?: SkuItem[];

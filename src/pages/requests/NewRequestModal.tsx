@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import {
   FileText,
   AlertCircle,
@@ -9,7 +9,11 @@ import {
   FormInput,
   Layers,
   Info,
-  Users
+  Users,
+  Building2,
+  TrendingUp,
+  Tag,
+  UserCheck
 } from 'lucide-react';
 import { Modal } from '../../components/common/Modal';
 import { Button } from '../../components/common/Button';
@@ -33,6 +37,7 @@ interface SkuRow {
   sampleSku: string;
   sampleSkuQty: number | '';
   sampleSkuCostPerUnit: number | '';
+  sampleSkuCostPerUnitGbp: number | '';
 }
 
 export const NewRequestModal: React.FC<NewRequestModalProps> = ({ isOpen, onClose, onSuccess }) => {
@@ -41,6 +46,7 @@ export const NewRequestModal: React.FC<NewRequestModalProps> = ({ isOpen, onClos
   const [companies, setCompanies] = useState(() => dataService.getCompanies().filter(c => c.active));
   const [allWarehouses, setAllWarehouses] = useState(() => dataService.getWarehouses().filter(w => w.active));
   const [customers, setCustomers] = useState(() => dataService.getCustomers().filter(c => c.active));
+  const [allUsers, setAllUsers] = useState(() => dataService.getUsers().filter(u => u.status === 'active'));
 
   // Company / Warehouse / Customer
   const [companyId, setCompanyId] = useState(() => dataService.getCompanies().filter(c => c.active)[0]?.id || '');
@@ -64,11 +70,13 @@ export const NewRequestModal: React.FC<NewRequestModalProps> = ({ isOpen, onClos
       const activeCompanies = dataService.getCompanies().filter(c => c.active);
       const activeWarehouses = dataService.getWarehouses().filter(w => w.active);
       const activeCustomers = dataService.getCustomers().filter(c => c.active);
+      const activeUsers = dataService.getUsers().filter(u => u.status === 'active');
 
       setTeams(activeTeams);
       setCompanies(activeCompanies);
       setAllWarehouses(activeWarehouses);
       setCustomers(activeCustomers);
+      setAllUsers(activeUsers);
 
       setCompanyId(prev => (prev && activeCompanies.some(c => c.id === prev)) ? prev : (activeCompanies[0]?.id || ''));
       setWarehouseId(prev => (prev && activeWarehouses.some(w => w.id === prev)) ? prev : (activeWarehouses[0]?.id || ''));
@@ -91,12 +99,68 @@ export const NewRequestModal: React.FC<NewRequestModalProps> = ({ isOpen, onClos
   // --- Standard Form State ---
   // 1. Date: Auto-fetch current date (YYYY-MM-DD)
   const [date, setDate] = useState(() => new Date().toISOString().split('T')[0]);
-  // 2. Department
-  const [department, setDepartment] = useState(currentUser.department || 'Commercial Sales');
-  // 3. Agent/Team Name
-  const [agentOrTeamName, setAgentOrTeamName] = useState(currentUser.name || '');
-  // 4. Business Name
+  // 2. Team
+  const [teamId, setTeamId] = useState(currentUser.teamId || teams[0]?.id || '');
+  // 3. Agent Name (staff member, searchable per team)
+  const [agentUserId, setAgentUserId] = useState(currentUser.id || '');
+  const [agentName, setAgentName] = useState(currentUser.name || '');
+  // 4. Our Company Name (auto-filled from issuing company)
+  const [ourCompanyName, setOurCompanyName] = useState(() => {
+    const firstCo = dataService.getCompanies().filter(c => c.active)[0];
+    return firstCo?.name || '';
+  });
+  // 5. Business Name (customer side)
   const [businessName, setBusinessName] = useState('');
+  // 6. Category: Sample or Gift
+  const [category, setCategory] = useState<'Sample' | 'Gift'>('Sample');
+  // 7. System Invoice no.
+  const [systemInvoiceNo, setSystemInvoiceNo] = useState('');
+  // 8. GBP Exchange Rate
+  const [gbpExchangeRate, setGbpExchangeRate] = useState<number | ''>(1.27);
+
+  // Department (kept for compatibility)
+  const [department, setDepartment] = useState(currentUser.department || 'Commercial Sales');
+  // Priority
+  const [priority, setPriority] = useState<RequestPriority>('normal');
+
+  // Derived: selected team object
+  const selectedTeam = useMemo(() => teams.find(t => t.id === teamId), [teams, teamId]);
+
+  // Derived: staff members belonging to selected team (users with matching teamId)
+  const teamStaffMembers = useMemo(() => {
+    if (!teamId) return allUsers;
+    return allUsers.filter(u => u.teamId === teamId || u.id === currentUser.id);
+  }, [teamId, allUsers, currentUser.id]);
+
+  // When team changes, reset agent if current agent not in new team
+  useEffect(() => {
+    if (teamId && agentUserId) {
+      const inTeam = teamStaffMembers.some(u => u.id === agentUserId);
+      if (!inTeam) {
+        // Try to keep current user if they're in the list
+        const currentInTeam = teamStaffMembers.find(u => u.id === currentUser.id);
+        if (currentInTeam) {
+          setAgentUserId(currentUser.id);
+          setAgentName(currentUser.name);
+        } else if (teamStaffMembers.length > 0) {
+          setAgentUserId(teamStaffMembers[0].id);
+          setAgentName(teamStaffMembers[0].name);
+        }
+      }
+    }
+  }, [teamId]);
+
+  // When companyId changes, update ourCompanyName
+  useEffect(() => {
+    const co = companies.find(c => c.id === companyId);
+    if (co) setOurCompanyName(co.name);
+  }, [companyId, companies]);
+
+  const handleAgentChange = (userId: string) => {
+    setAgentUserId(userId);
+    const user = allUsers.find(u => u.id === userId);
+    setAgentName(user?.name || '');
+  };
 
   const handleCustomerChange = (newCustomerId: string) => {
     setCustomerId(newCustomerId);
@@ -106,18 +170,9 @@ export const NewRequestModal: React.FC<NewRequestModalProps> = ({ isOpen, onClos
     }
   };
 
-  // 5. Type of FOC
-  const [typeOfFoc, setTypeOfFoc] = useState('Product Sample / Trial');
-  // 6. System Invoice no.
-  const [systemInvoiceNo, setSystemInvoiceNo] = useState('');
-
-  // Team & Priority
-  const [teamId, setTeamId] = useState(currentUser.teamId || teams[0]?.id || '');
-  const [priority, setPriority] = useState<RequestPriority>('normal');
-
-  // Multiple SKU Rows
+  // Multiple SKU Rows (now with GBP per unit)
   const [skuRows, setSkuRows] = useState<SkuRow[]>([
-    { id: 'sku-1', sampleSku: '', sampleSkuQty: 1, sampleSkuCostPerUnit: 50 }
+    { id: 'sku-1', sampleSku: '', sampleSkuQty: 1, sampleSkuCostPerUnit: 50, sampleSkuCostPerUnitGbp: 40 }
   ]);
 
   // General request metadata & comments
@@ -190,7 +245,8 @@ export const NewRequestModal: React.FC<NewRequestModalProps> = ({ isOpen, onClos
         id: 'sku-' + Date.now() + '-' + Math.random().toString(36).substring(2, 6),
         sampleSku: '',
         sampleSkuQty: 1,
-        sampleSkuCostPerUnit: 0
+        sampleSkuCostPerUnit: 0,
+        sampleSkuCostPerUnitGbp: 0
       }
     ]);
   };
@@ -201,31 +257,61 @@ export const NewRequestModal: React.FC<NewRequestModalProps> = ({ isOpen, onClos
   };
 
   const handleUpdateSkuRow = (id: string, field: keyof SkuRow, value: any) => {
-    setSkuRows(prev => prev.map(r => r.id === id ? { ...r, [field]: value } : r));
+    setSkuRows(prev => prev.map(r => {
+      if (r.id !== id) return r;
+      const updated = { ...r, [field]: value };
+      // Auto-calculate GBP from local cost when local cost changes
+      if (field === 'sampleSkuCostPerUnit' && gbpExchangeRate !== '') {
+        const localCost = Number(value) || 0;
+        updated.sampleSkuCostPerUnitGbp = Math.round(localCost / Number(gbpExchangeRate) * 100) / 100;
+      }
+      return updated;
+    }));
+  };
+
+  // When GBP rate changes, recalculate all GBP per-unit costs
+  const handleGbpRateChange = (newRate: number | '') => {
+    setGbpExchangeRate(newRate);
+    if (newRate !== '' && Number(newRate) > 0) {
+      setSkuRows(prev => prev.map(r => ({
+        ...r,
+        sampleSkuCostPerUnitGbp: r.sampleSkuCostPerUnit !== ''
+          ? Math.round(Number(r.sampleSkuCostPerUnit) / Number(newRate) * 100) / 100
+          : ''
+      })));
+    }
   };
 
   // Calculated items and totals
   const calculatedSkuItems: SkuItem[] = skuRows.map(r => {
     const qty = Number(r.sampleSkuQty) || 0;
     const unitCost = Number(r.sampleSkuCostPerUnit) || 0;
+    const unitCostGbp = Number(r.sampleSkuCostPerUnitGbp) || 0;
     const lineTotal = Math.round(qty * unitCost * 100) / 100;
+    const lineTotalGbp = Math.round(qty * unitCostGbp * 100) / 100;
     return {
       id: r.id,
       sampleSku: r.sampleSku,
       sampleSkuQty: r.sampleSkuQty,
       sampleSkuCostPerUnit: r.sampleSkuCostPerUnit,
-      sampleSkuTotal: lineTotal
+      sampleSkuTotal: lineTotal,
+      sampleSkuCostPerUnitGbp: r.sampleSkuCostPerUnitGbp,
+      sampleSkuTotalGbp: lineTotalGbp
     };
   });
 
   const totalSkuQty = calculatedSkuItems.reduce((acc, item) => acc + (Number(item.sampleSkuQty) || 0), 0);
   const grandSkuTotal = Math.round(calculatedSkuItems.reduce((acc, item) => acc + (item.sampleSkuTotal || 0), 0) * 100) / 100;
+  const grandSkuTotalGbp = Math.round(calculatedSkuItems.reduce((acc, item) => acc + (item.sampleSkuTotalGbp || 0), 0) * 100) / 100;
 
   // Selected team balance check
-  const selectedTeam = teams.find(t => t.id === teamId);
   const currentRemaining = selectedTeam ? selectedTeam.remainingBudget : 0;
   const projectedBalance = currentRemaining - grandSkuTotal;
   const isOverBudget = projectedBalance < 0;
+
+  // Currency label from selected company
+  const selectedCompanyObj = companies.find(c => c.id === companyId);
+  const currencyLabel = selectedCompanyObj?.defaultCurrency || 'USD';
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -234,8 +320,6 @@ export const NewRequestModal: React.FC<NewRequestModalProps> = ({ isOpen, onClos
     const selectedCompany = companies.find(c => c.id === companyId);
     const selectedWarehouse = allWarehouses.find(w => w.id === warehouseId);
     const selectedCustomer = customers.find(c => c.id === customerId);
-    // Spread last in each payload below so a linked Customer's real contact/company
-    // name wins over the free-text Agent/Business Name fields.
     const linkageFields = {
       companyId: companyId || undefined,
       companyName: selectedCompany?.name,
@@ -247,8 +331,16 @@ export const NewRequestModal: React.FC<NewRequestModalProps> = ({ isOpen, onClos
 
     // If using the default standard form:
     if (isDefaultSampleForm) {
-      if (!department.trim() || !agentOrTeamName.trim() || !businessName.trim() || !typeOfFoc.trim()) {
-        setError('Please fill in all required operational details (Department, Agent/Team, Business Name, Type of FOC)');
+      if (!agentName.trim()) {
+        setError('Please select an Agent / Staff Member');
+        return;
+      }
+      if (!businessName.trim()) {
+        setError('Please fill in the Business Name (customer/recipient)');
+        return;
+      }
+      if (!ourCompanyName.trim()) {
+        setError('Please specify Our Company Name');
         return;
       }
 
@@ -267,6 +359,11 @@ export const NewRequestModal: React.FC<NewRequestModalProps> = ({ isOpen, onClos
         return;
       }
 
+      if (!gbpExchangeRate || Number(gbpExchangeRate) <= 0) {
+        setError('Please enter a valid GBP exchange rate (must be > 0)');
+        return;
+      }
+
       setIsSubmitting(true);
       try {
         const primarySku = calculatedSkuItems.map(s => s.sampleSku).filter(Boolean).join(', ');
@@ -277,35 +374,49 @@ export const NewRequestModal: React.FC<NewRequestModalProps> = ({ isOpen, onClos
             customFields: {
               date,
               department,
-              agentOrTeamName,
+              teamId,
+              teamName: selectedTeam?.name,
+              teamType: selectedTeam?.type,
+              agentUserId,
+              agentName,
+              ourCompanyName,
               businessName,
-              typeOfFoc,
+              category,
               systemInvoiceNo,
               skuSummary: primarySku,
               totalSkuQty,
-              grandSkuTotal
+              grandSkuTotal,
+              grandSkuTotalGbp,
+              gbpExchangeRate
             },
             date,
             department,
-            agentOrTeamName,
+            agentOrTeamName: agentName,
+            agentName,
+            agentUserId,
+            ourCompanyName,
             businessName,
-            typeOfFoc,
+            category,
+            typeOfFoc: category, // backward compat
             systemInvoiceNo: systemInvoiceNo || undefined,
             sampleSku: primarySku,
             sampleSkuQty: totalSkuQty,
             sampleSkuCostPerUnit: calculatedSkuItems[0]?.sampleSkuCostPerUnit !== '' ? Number(calculatedSkuItems[0]?.sampleSkuCostPerUnit) : 0,
             sampleSkuTotal: grandSkuTotal,
+            sampleSkuCostPerUnitGbp: calculatedSkuItems[0]?.sampleSkuCostPerUnitGbp !== '' ? Number(calculatedSkuItems[0]?.sampleSkuCostPerUnitGbp) : 0,
+            sampleSkuTotalGbp: grandSkuTotalGbp,
+            gbpExchangeRate: Number(gbpExchangeRate),
             skuItems: calculatedSkuItems,
 
             // Mapped fields for backwards compatibility
-            customerName: agentOrTeamName,
+            customerName: agentName,
             customerCompany: businessName,
-            requestCategory: typeOfFoc,
+            requestCategory: category,
             requestItem: `${primarySku} (Total Qty: ${totalSkuQty})`,
             requestValue: grandSkuTotal,
             discountPercentage: 0,
             teamId,
-            reason: reason.trim() || `FOC request for ${businessName} - SKUs: ${primarySku} (Total Qty: ${totalSkuQty})`,
+            reason: reason.trim() || `FOC ${category} request for ${businessName} - SKUs: ${primarySku} (Total Qty: ${totalSkuQty})`,
             priority,
             attachments: [],
             ...linkageFields
@@ -338,7 +449,6 @@ export const NewRequestModal: React.FC<NewRequestModalProps> = ({ isOpen, onClos
 
       setIsSubmitting(true);
       try {
-        // Map dynamic form fields to standard fields intelligently
         let mappedCustomerName = currentUser.name;
         let mappedCompany = 'Enterprise Client';
         let mappedItem = selectedForm.title;
@@ -347,7 +457,6 @@ export const NewRequestModal: React.FC<NewRequestModalProps> = ({ isOpen, onClos
         let mappedReason = '';
         let mappedDate = new Date().toISOString().split('T')[0];
 
-        // Search field values for standard meanings
         selectedForm.fields.forEach(f => {
           const val = customValues[f.id];
           if (!val) return;
@@ -372,10 +481,8 @@ export const NewRequestModal: React.FC<NewRequestModalProps> = ({ isOpen, onClos
           }
         });
 
-        // Use SKU total if SKUs were entered, otherwise mappedValue
         const finalValue = grandSkuTotal > 0 ? grandSkuTotal : (mappedValue > 0 ? mappedValue : 150);
 
-        // Build key-value map with human readable field labels for display
         const readableCustomFields: Record<string, any> = {};
         selectedForm.fields.forEach(f => {
           if (customValues[f.id] !== undefined) {
@@ -431,10 +538,10 @@ export const NewRequestModal: React.FC<NewRequestModalProps> = ({ isOpen, onClos
       title={
         <div className="flex items-center gap-2">
           <FileText className="w-5 h-5 text-primary" />
-          <span>New Request</span>
+          <span>New Free / Sample Item Request</span>
         </div>
       }
-      description="Select an authorized form template and submit your request for multi-level review and budget tracking"
+      description="Submit a Free of Cost (FOC) product, promotional sample or gift request for multi-level review and budget tracking"
       maxWidth="2xl"
     >
       <form onSubmit={handleSubmit} className="space-y-4">
@@ -481,12 +588,13 @@ export const NewRequestModal: React.FC<NewRequestModalProps> = ({ isOpen, onClos
 
         {/* Logistics & Dispatch Origin */}
         <div className="p-3.5 rounded-xl bg-card border border-border space-y-3">
-          <span className="text-xs font-bold text-foreground block">
+          <span className="text-xs font-bold text-foreground flex items-center gap-1.5 block">
+            <Building2 className="w-4 h-4 text-primary" />
             Issuing Entity & Dispatch Warehouse
           </span>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <Select
-              label="Issuing Company"
+              label="Issuing Company (Our Company)"
               value={companyId}
               onChange={(e) => handleCompanyChange(e.target.value)}
               options={companies.map(c => ({ label: `${c.name} (${c.defaultCurrency})`, value: c.id }))}
@@ -499,87 +607,87 @@ export const NewRequestModal: React.FC<NewRequestModalProps> = ({ isOpen, onClos
               helperText={allWarehouses.length === 0 ? 'No warehouses available' : undefined}
             />
           </div>
+          {/* Our Company Name (editable override) */}
+          <Input
+            label="Our Company Name (on document) *"
+            placeholder="e.g. RDX Global Holdings"
+            value={ourCompanyName}
+            onChange={(e) => setOurCompanyName(e.target.value)}
+            required
+          />
         </div>
 
         {/* 2. DYNAMIC FIELDS OR DEFAULT STANDARD FORM */}
         {isDefaultSampleForm ? (
           /* STANDARD FORM LAYOUT */
           <>
-            {/* Row 1: Date & Customer Selection (Customer placed directly after Date) */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <div>
-                <div className="flex items-center justify-between mb-1.5">
-                  <label className="block text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                    Date (Auto-fetched) *
-                  </label>
-                  <span className="text-[10px] text-emerald-600 dark:text-emerald-400 font-medium flex items-center gap-1">
-                    <Calendar className="w-3 h-3" /> Current Date
+            {/* ── SECTION: TEAM & AGENT ── */}
+            <div className="p-3.5 rounded-xl bg-card border border-border space-y-3">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-bold text-foreground flex items-center gap-1.5">
+                  <Users className="w-4 h-4 text-primary" />
+                  Team & Agent Details *
+                </span>
+                {selectedTeam && (
+                  <span className={`text-[10px] font-bold px-2.5 py-1 rounded-full uppercase tracking-wider ${
+                    selectedTeam.type === 'B2B'
+                      ? 'bg-blue-500/15 text-blue-600 dark:text-blue-400 border border-blue-500/25'
+                      : 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border border-emerald-500/25'
+                  }`}>
+                    {selectedTeam.type}
                   </span>
+                )}
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                {/* Team Selection */}
+                <div>
+                  <label className="block text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-1.5">
+                    Team *
+                  </label>
+                  <select
+                    value={teamId}
+                    onChange={(e) => setTeamId(e.target.value)}
+                    className="w-full h-10 px-3.5 bg-background border border-input rounded-lg text-xs sm:text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/30"
+                    required
+                  >
+                    <option value="">Select a team...</option>
+                    {/* Group by B2B / B2C */}
+                    <optgroup label="── B2B Teams ──">
+                      {teams.filter(t => t.type === 'B2B').map(t => (
+                        <option key={t.id} value={t.id}>
+                          {t.name} · B2B (${(t.remainingBudget || 0).toLocaleString()} left)
+                        </option>
+                      ))}
+                    </optgroup>
+                    <optgroup label="── B2C Teams ──">
+                      {teams.filter(t => t.type === 'B2C').map(t => (
+                        <option key={t.id} value={t.id}>
+                          {t.name} · B2C (${(t.remainingBudget || 0).toLocaleString()} left)
+                        </option>
+                      ))}
+                    </optgroup>
+                    {teams.filter(t => !t.type).map(t => (
+                      <option key={t.id} value={t.id}>{t.name}</option>
+                    ))}
+                  </select>
                 </div>
-                <input
-                  type="date"
-                  value={date}
-                  onChange={(e) => setDate(e.target.value)}
-                  required
-                  className="w-full h-10 px-3.5 bg-background border border-input rounded-lg text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/30"
+
+                {/* Agent / Staff Member - searchable, filtered by team */}
+                <SearchableSelect
+                  label="Agent Name (Staff Member) *"
+                  value={agentUserId}
+                  onChange={handleAgentChange}
+                  options={teamStaffMembers.map(u => ({
+                    label: `${u.name}${u.title ? ` — ${u.title}` : ''}`,
+                    value: u.id
+                  }))}
+                  emptyLabel="Type to search staff..."
+                  helperText={selectedTeam ? `Showing ${teamStaffMembers.length} member(s) from ${selectedTeam.name}` : 'Select a team first to filter members'}
                 />
               </div>
 
-              <SearchableSelect
-                label="Customer / Company (optional)"
-                value={customerId}
-                onChange={(val) => handleCustomerChange(val)}
-                options={customers.map(c => ({ label: `${c.contactName} (${c.companyName})`, value: c.id }))}
-                emptyLabel="None — enter details manually"
-                helperText={customerId ? 'Customer / Company details auto-filled from directory' : undefined}
-              />
-            </div>
-
-            {/* Row 2: Department & Agent / Requester Name */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <Input
-                label="Department *"
-                placeholder="e.g. Commercial Sales / Marketing"
-                value={department}
-                onChange={(e) => setDepartment(e.target.value)}
-                required
-              />
-              <Input
-                label="Agent / Requester Name *"
-                placeholder="e.g. John Doe / Apex Sales Team"
-                value={agentOrTeamName}
-                onChange={(e) => setAgentOrTeamName(e.target.value)}
-                required
-              />
-            </div>
-
-            {/* Row 3: Business Name & Type of FOC */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <Input
-                label="Business Name *"
-                placeholder="e.g. Acme Corporation"
-                value={businessName}
-                onChange={(e) => setBusinessName(e.target.value)}
-                required
-              />
-              <Input
-                label="Type of FOC *"
-                placeholder="e.g. Promotional Sample / Customer Trial"
-                value={typeOfFoc}
-                onChange={(e) => setTypeOfFoc(e.target.value)}
-                required
-              />
-            </div>
-
-            {/* Row 4: System Invoice no. & Priority */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <Input
-                label="System Invoice no."
-                type="number"
-                placeholder="e.g. 109482"
-                value={systemInvoiceNo}
-                onChange={(e) => setSystemInvoiceNo(e.target.value)}
-              />
+              {/* Priority */}
               <Select
                 label="Priority *"
                 value={priority}
@@ -593,37 +701,143 @@ export const NewRequestModal: React.FC<NewRequestModalProps> = ({ isOpen, onClos
               />
             </div>
 
-            {/* Row 5: Calculation Section with Internal Team Selection */}
-            <div className="p-4 rounded-xl bg-muted/40 border border-border/80 space-y-4">
-              {/* Internal Team Selection Section */}
-              <div className="p-3.5 rounded-lg bg-card border border-border space-y-2">
-                <div className="flex items-center justify-between">
-                  <span className="text-xs font-bold text-foreground flex items-center gap-1.5">
-                    <Users className="w-4 h-4 text-primary" />
-                    Internal Team Selection *
-                  </span>
-                  <span className="text-[11px] text-muted-foreground">
-                    Required for departmental spend control & budget ledger
-                  </span>
+            {/* ── SECTION: REQUEST DETAILS ── */}
+            <div className="p-3.5 rounded-xl bg-card border border-border space-y-3">
+              <span className="text-xs font-bold text-foreground flex items-center gap-1.5 block">
+                <Tag className="w-4 h-4 text-primary" />
+                Request Details
+              </span>
+
+              {/* Row 1: Date & Customer Selection */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                  <div className="flex items-center justify-between mb-1.5">
+                    <label className="block text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                      Date *
+                    </label>
+                    <span className="text-[10px] text-emerald-600 dark:text-emerald-400 font-medium flex items-center gap-1">
+                      <Calendar className="w-3 h-3" /> Auto-fetched
+                    </span>
+                  </div>
+                  <input
+                    type="date"
+                    value={date}
+                    onChange={(e) => setDate(e.target.value)}
+                    required
+                    className="w-full h-10 px-3.5 bg-background border border-input rounded-lg text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/30"
+                  />
                 </div>
 
-                <Select
-                  label="Select Internal Team *"
-                  value={teamId}
-                  onChange={(e) => setTeamId(e.target.value)}
-                  options={teams.map(t => ({
-                    label: `${t.name} ($${(t.remainingBudget || 0).toLocaleString()} remaining)`,
-                    value: t.id
-                  }))}
-                />
+                {/* Category: Sample or Gift */}
+                <div>
+                  <label className="block text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-1.5">
+                    Category (Sample / Gift) *
+                  </label>
+                  <div className="flex gap-2">
+                    {(['Sample', 'Gift'] as const).map(cat => (
+                      <button
+                        key={cat}
+                        type="button"
+                        onClick={() => setCategory(cat)}
+                        className={`flex-1 h-10 rounded-lg text-xs font-bold border-2 transition-all ${
+                          category === cat
+                            ? cat === 'Sample'
+                              ? 'bg-primary text-primary-foreground border-primary shadow-sm'
+                              : 'bg-amber-500 text-white border-amber-500 shadow-sm'
+                            : 'bg-background text-muted-foreground border-input hover:border-primary/50'
+                        }`}
+                      >
+                        {cat === 'Sample' ? '🧪 Sample' : '🎁 Gift'}
+                      </button>
+                    ))}
+                  </div>
+                </div>
               </div>
 
-              {/* SKU Calculators */}
+              {/* Row 2: Business Name & System Invoice */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <SearchableSelect
+                  label="Business Name (Customer) *"
+                  value={customerId}
+                  onChange={(val) => handleCustomerChange(val)}
+                  options={customers.map(c => ({ label: `${c.contactName} (${c.companyName})`, value: c.id }))}
+                  emptyLabel="None — enter manually"
+                  helperText={customerId ? 'Auto-filled from customer directory' : undefined}
+                />
+                {/* If no customer selected, allow manual entry */}
+                {!customerId && (
+                  <Input
+                    label="Business Name (manual) *"
+                    placeholder="e.g. Acme Corporation"
+                    value={businessName}
+                    onChange={(e) => setBusinessName(e.target.value)}
+                    required
+                  />
+                )}
+                {customerId && (
+                  <Input
+                    label="Confirmed Business Name"
+                    value={businessName}
+                    onChange={(e) => setBusinessName(e.target.value)}
+                    helperText="Auto-filled · editable"
+                  />
+                )}
+              </div>
+
+              {/* System Invoice Number */}
+              <Input
+                label="System Invoice Number (related to current order)"
+                type="number"
+                placeholder="e.g. 109482"
+                value={systemInvoiceNo}
+                onChange={(e) => setSystemInvoiceNo(e.target.value)}
+              />
+            </div>
+
+            {/* ── SECTION: GBP EXCHANGE RATE ── */}
+            <div className="p-3.5 rounded-xl bg-card border border-border space-y-2">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-bold text-foreground flex items-center gap-1.5">
+                  <TrendingUp className="w-4 h-4 text-primary" />
+                  GBP Exchange Rate
+                </span>
+                <span className="text-[10px] text-muted-foreground">
+                  Used to auto-calculate GBP equivalents for each SKU line
+                </span>
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 items-end">
+                <div className="sm:col-span-1">
+                  <label className="block text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-1.5">
+                    1 GBP = ? {currencyLabel} *
+                  </label>
+                  <div className="relative">
+                    <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-xs font-bold text-muted-foreground">£→</span>
+                    <input
+                      type="number"
+                      min="0.001"
+                      step="0.0001"
+                      placeholder="e.g. 1.2700"
+                      value={gbpExchangeRate}
+                      onChange={(e) => handleGbpRateChange(e.target.value === '' ? '' : Number(e.target.value))}
+                      className="w-full h-10 pl-10 pr-3.5 bg-background border border-input rounded-lg text-sm font-mono text-foreground focus:outline-none focus:ring-2 focus:ring-primary/30"
+                      required
+                    />
+                  </div>
+                </div>
+                <div className="sm:col-span-2 p-2.5 rounded-lg bg-amber-500/10 border border-amber-500/20 text-[11px] text-amber-700 dark:text-amber-400">
+                  <p className="font-semibold">How GBP conversion works:</p>
+                  <p>Per Unit GBP = Local Cost ÷ Exchange Rate. E.g. $50 ÷ 1.27 = £39.37</p>
+                </div>
+              </div>
+            </div>
+
+            {/* ── SECTION: SKU CALCULATORS ── */}
+            <div className="p-4 rounded-xl bg-muted/40 border border-border/80 space-y-4">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-1.5">
                   <Calculator className="w-4 h-4 text-primary" />
                   <span className="text-xs font-bold text-foreground">
-                    Sample SKU Calculators ({skuRows.length})
+                    Sample SKU Calculator ({skuRows.length} SKU{skuRows.length !== 1 ? 's' : ''})
                   </span>
                 </div>
                 <Button
@@ -638,11 +852,22 @@ export const NewRequestModal: React.FC<NewRequestModalProps> = ({ isOpen, onClos
                 </Button>
               </div>
 
+              {/* Column headers */}
+              <div className="hidden sm:grid sm:grid-cols-6 gap-2 px-1">
+                <div className="sm:col-span-2 text-[10px] font-bold uppercase text-muted-foreground tracking-wider">Sample SKU</div>
+                <div className="text-[10px] font-bold uppercase text-muted-foreground tracking-wider">QTY</div>
+                <div className="text-[10px] font-bold uppercase text-muted-foreground tracking-wider">Cost/{currencyLabel}</div>
+                <div className="text-[10px] font-bold uppercase text-muted-foreground tracking-wider">Cost/GBP</div>
+                <div className="text-[10px] font-bold uppercase text-muted-foreground tracking-wider">Total {currencyLabel}</div>
+              </div>
+
               <div className="space-y-3">
                 {skuRows.map((row, index) => {
                   const qty = Number(row.sampleSkuQty) || 0;
                   const unitCost = Number(row.sampleSkuCostPerUnit) || 0;
+                  const unitCostGbp = Number(row.sampleSkuCostPerUnitGbp) || 0;
                   const lineTotal = Math.round(qty * unitCost * 100) / 100;
+                  const lineTotalGbp = Math.round(qty * unitCostGbp * 100) / 100;
 
                   return (
                     <div
@@ -665,8 +890,9 @@ export const NewRequestModal: React.FC<NewRequestModalProps> = ({ isOpen, onClos
                         )}
                       </div>
 
-                      <div className="grid grid-cols-1 sm:grid-cols-4 gap-3 items-end">
-                        <div className="sm:col-span-1">
+                      <div className="grid grid-cols-2 sm:grid-cols-6 gap-3 items-end">
+                        {/* SKU Code */}
+                        <div className="col-span-2 sm:col-span-2">
                           <Input
                             label="Sample SKU *"
                             placeholder="e.g. SKU-RDX-8821"
@@ -676,40 +902,64 @@ export const NewRequestModal: React.FC<NewRequestModalProps> = ({ isOpen, onClos
                           />
                         </div>
 
+                        {/* QTY */}
                         <div>
                           <Input
                             label="QTY *"
                             type="number"
                             min="1"
                             step="1"
-                            placeholder="e.g. 5"
+                            placeholder="5"
                             value={row.sampleSkuQty}
                             onChange={(e) => handleUpdateSkuRow(row.id, 'sampleSkuQty', e.target.value === '' ? '' : Number(e.target.value))}
                             required
                           />
                         </div>
 
+                        {/* Cost per unit (local currency) */}
                         <div>
-                          <Input
-                            label="Cost / Unit ($) *"
+                          <label className="block text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-1.5">
+                            Per Unit ({currencyLabel}) *
+                          </label>
+                          <input
                             type="number"
                             min="0"
                             step="0.01"
-                            placeholder="e.g. 25.00"
+                            placeholder="25.00"
                             value={row.sampleSkuCostPerUnit}
                             onChange={(e) => handleUpdateSkuRow(row.id, 'sampleSkuCostPerUnit', e.target.value === '' ? '' : Number(e.target.value))}
                             required
+                            className="w-full h-10 px-3 bg-background border border-input rounded-lg text-xs sm:text-sm font-mono text-foreground focus:outline-none focus:ring-2 focus:ring-primary/30"
                           />
                         </div>
 
+                        {/* Cost per unit GBP */}
                         <div>
                           <label className="block text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-1.5">
-                            Line Total
+                            Per Unit (GBP)
                           </label>
-                          <div className="h-10 px-3 bg-muted/40 border border-border rounded-lg flex items-center justify-between font-mono font-bold text-sm text-foreground">
-                            <span>${lineTotal.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
-                            <span className="text-[10px] uppercase font-sans font-medium text-muted-foreground">
-                              {qty} × ${unitCost}
+                          <input
+                            type="number"
+                            min="0"
+                            step="0.01"
+                            placeholder="£ auto"
+                            value={row.sampleSkuCostPerUnitGbp}
+                            onChange={(e) => handleUpdateSkuRow(row.id, 'sampleSkuCostPerUnitGbp', e.target.value === '' ? '' : Number(e.target.value))}
+                            className="w-full h-10 px-3 bg-amber-50 dark:bg-amber-950/20 border border-amber-300/60 dark:border-amber-700/40 rounded-lg text-xs sm:text-sm font-mono text-foreground focus:outline-none focus:ring-2 focus:ring-amber-400/30"
+                          />
+                        </div>
+
+                        {/* Line total display */}
+                        <div>
+                          <label className="block text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-1.5">
+                            Total ({currencyLabel})
+                          </label>
+                          <div className="h-10 px-3 bg-muted/40 border border-border rounded-lg flex flex-col items-start justify-center">
+                            <span className="font-mono font-bold text-sm text-foreground leading-tight">
+                              {lineTotal.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                            </span>
+                            <span className="text-[9px] font-mono text-amber-600 dark:text-amber-400 leading-tight">
+                              £{lineTotalGbp.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                             </span>
                           </div>
                         </div>
@@ -719,18 +969,29 @@ export const NewRequestModal: React.FC<NewRequestModalProps> = ({ isOpen, onClos
                 })}
               </div>
 
-              {/* Combined SKU Grand Total Banner */}
-              <div className="p-3.5 rounded-lg bg-card border-2 border-primary/30 flex flex-col sm:flex-row sm:items-center justify-between gap-2 shadow-xs">
-                <div className="flex items-center gap-2">
-                  <span className="text-xs font-bold text-foreground">Calculated Grand Total:</span>
-                  <span className="text-xs text-muted-foreground">
-                    ({totalSkuQty} total items across {skuRows.length} {skuRows.length === 1 ? 'SKU' : 'SKUs'})
-                  </span>
+              {/* Grand Total Banner */}
+              <div className="p-3.5 rounded-lg bg-card border-2 border-primary/30 grid grid-cols-2 gap-3 shadow-xs">
+                <div>
+                  <div className="text-[10px] font-bold uppercase text-muted-foreground tracking-wider mb-0.5">
+                    Grand Total ({currencyLabel})
+                  </div>
+                  <div className="text-lg font-extrabold font-mono text-primary">
+                    {grandSkuTotal.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                  </div>
+                  <div className="text-[10px] text-muted-foreground">
+                    {totalSkuQty} units across {skuRows.length} SKU{skuRows.length !== 1 ? 's' : ''}
+                  </div>
                 </div>
-                <div className="flex items-center gap-2">
-                  <span className="text-base font-extrabold font-mono text-primary">
-                    ${grandSkuTotal.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                  </span>
+                <div className="border-l border-border/60 pl-3">
+                  <div className="text-[10px] font-bold uppercase text-muted-foreground tracking-wider mb-0.5">
+                    Grand Total (GBP £)
+                  </div>
+                  <div className="text-lg font-extrabold font-mono text-amber-600 dark:text-amber-400">
+                    £{grandSkuTotalGbp.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                  </div>
+                  <div className="text-[10px] text-muted-foreground">
+                    At rate 1 GBP = {gbpExchangeRate} {currencyLabel}
+                  </div>
                 </div>
               </div>
 
@@ -742,23 +1003,38 @@ export const NewRequestModal: React.FC<NewRequestModalProps> = ({ isOpen, onClos
                     : 'bg-primary/5 border-primary/20 text-foreground'
                 }`}>
                   <div className="flex items-center justify-between font-medium">
-                    <span>Allocated Team Ledger: <strong>{selectedTeam.name}</strong></span>
-                    <span>Remaining Balance: <strong>${(currentRemaining || 0).toLocaleString()}</strong></span>
+                    <span>Team Ledger: <strong>{selectedTeam.name}</strong>
+                      <span className={`ml-2 text-[9px] font-bold px-1.5 py-0.5 rounded uppercase ${
+                        selectedTeam.type === 'B2B' ? 'bg-blue-500/15 text-blue-600 dark:text-blue-400' : 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400'
+                      }`}>{selectedTeam.type}</span>
+                    </span>
+                    <span>Balance: <strong>${(currentRemaining || 0).toLocaleString()}</strong></span>
                   </div>
                   <div className="flex items-center justify-between text-[11px]">
-                    <span>Cost after approval:</span>
+                    <span>After approval:</span>
                     <span className="font-mono font-bold">
-                      -${grandSkuTotal.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} → Projected: ${(projectedBalance || 0).toLocaleString()}
+                      -{grandSkuTotal.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} → Projected: ${(projectedBalance || 0).toLocaleString()}
                     </span>
                   </div>
                   {isOverBudget && (
                     <div className="flex items-center gap-1.5 text-[11px] font-semibold text-rose-600 dark:text-rose-400 pt-1 border-t border-rose-500/20">
                       <AlertCircle className="w-3.5 h-3.5" />
-                      <span>Warning: Grand total exceeds current team remaining balance. Authorized override will be required.</span>
+                      <span>Warning: Grand total exceeds team remaining balance. Authorized override required.</span>
                     </div>
                   )}
                 </div>
               )}
+            </div>
+
+            {/* Conditions Reminder */}
+            <div className="p-3 rounded-xl bg-amber-500/8 border border-amber-500/25 text-[11px] text-amber-700 dark:text-amber-400 space-y-1">
+              <p className="font-bold flex items-center gap-1.5">
+                <Info className="w-3.5 h-3.5 shrink-0" /> Conditions for Free / Sample Items
+              </p>
+              <ul className="list-disc ml-4 space-y-0.5">
+                <li>The selected free/sample item must <strong>NOT</strong> be the same item already present in the current order.</li>
+                <li>Multiple sizes & colors of the same sample <strong>cannot</strong> be sent together.</li>
+              </ul>
             </div>
 
             {/* Business Rationale / Comments */}
@@ -770,7 +1046,7 @@ export const NewRequestModal: React.FC<NewRequestModalProps> = ({ isOpen, onClos
                 rows={2}
                 value={reason}
                 onChange={(e) => setReason(e.target.value)}
-                placeholder="Explain how this sample/request supports relationship building, evaluations, contract renewals, or corporate milestones..."
+                placeholder="Explain how this sample/gift supports relationship building, evaluations, contract renewals, or corporate milestones..."
                 className="w-full bg-background border border-input rounded-lg px-3.5 py-2 text-sm text-foreground placeholder:text-muted-foreground/60 focus:outline-none focus:ring-2 focus:ring-primary/30"
               />
             </div>
@@ -791,15 +1067,31 @@ export const NewRequestModal: React.FC<NewRequestModalProps> = ({ isOpen, onClos
               </div>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <Select
-                  label="Select Internal Team *"
-                  value={teamId}
-                  onChange={(e) => setTeamId(e.target.value)}
-                  options={teams.map(t => ({
-                    label: `${t.name} ($${(t.remainingBudget || 0).toLocaleString()} remaining)`,
-                    value: t.id
-                  }))}
-                />
+                <div>
+                  <label className="block text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-1.5">
+                    Select Team *
+                  </label>
+                  <select
+                    value={teamId}
+                    onChange={(e) => setTeamId(e.target.value)}
+                    className="w-full h-10 px-3.5 bg-background border border-input rounded-lg text-xs sm:text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/30"
+                  >
+                    <optgroup label="── B2B Teams ──">
+                      {teams.filter(t => t.type === 'B2B').map(t => (
+                        <option key={t.id} value={t.id}>
+                          {t.name} · B2B (${(t.remainingBudget || 0).toLocaleString()} left)
+                        </option>
+                      ))}
+                    </optgroup>
+                    <optgroup label="── B2C Teams ──">
+                      {teams.filter(t => t.type === 'B2C').map(t => (
+                        <option key={t.id} value={t.id}>
+                          {t.name} · B2C (${(t.remainingBudget || 0).toLocaleString()} left)
+                        </option>
+                      ))}
+                    </optgroup>
+                  </select>
+                </div>
                 <Select
                   label="Priority *"
                   value={priority}

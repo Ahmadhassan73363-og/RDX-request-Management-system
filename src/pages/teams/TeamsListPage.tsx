@@ -27,6 +27,7 @@ export const TeamsListPage: React.FC<TeamsListPageProps> = ({ onNavigateToBudget
   const [teamName, setTeamName] = useState('');
   const [teamCode, setTeamCode] = useState('');
   const [teamDescription, setTeamDescription] = useState('');
+  const [teamType, setTeamType] = useState<'B2B' | 'B2C'>('B2B');
   const [leadId, setLeadId] = useState(users[0]?.id || '');
   const [allocatedBudget, setAllocatedBudget] = useState<number | ''>(25000);
   const [teamColor, setTeamColor] = useState('#3b82f6');
@@ -59,6 +60,7 @@ export const TeamsListPage: React.FC<TeamsListPageProps> = ({ onNavigateToBudget
     setTeamName('');
     setTeamCode('');
     setTeamDescription('');
+    setTeamType('B2B');
     setLeadId(users[0]?.id || '');
     setAllocatedBudget(25000);
     setTeamColor('#3b82f6');
@@ -71,6 +73,7 @@ export const TeamsListPage: React.FC<TeamsListPageProps> = ({ onNavigateToBudget
     setTeamName(team.name);
     setTeamCode(team.code);
     setTeamDescription(team.description);
+    setTeamType(team.type || 'B2B');
     setLeadId(team.leadId);
     setAllocatedBudget(team.allocatedBudget);
     setTeamColor(team.color || '#3b82f6');
@@ -96,6 +99,7 @@ export const TeamsListPage: React.FC<TeamsListPageProps> = ({ onNavigateToBudget
           name: teamName.trim(),
           code: teamCode.trim() || teamName.trim().substring(0, 4).toUpperCase(),
           description: teamDescription.trim(),
+          type: teamType,
           leadId,
           leadName: leadUser?.name || 'Assigned Lead',
           leadEmail: leadUser?.email,
@@ -156,7 +160,16 @@ export const TeamsListPage: React.FC<TeamsListPageProps> = ({ onNavigateToBudget
                     </div>
                     <div>
                       <h3 className="text-sm font-bold text-foreground">{team.name}</h3>
-                      <p className="text-[11px] text-muted-foreground">Code: {team.code}</p>
+                      <div className="flex items-center gap-1.5">
+                        <p className="text-[11px] text-muted-foreground">Code: {team.code}</p>
+                        <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded uppercase tracking-wider ${
+                          team.type === 'B2C'
+                            ? 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400'
+                            : 'bg-blue-500/15 text-blue-600 dark:text-blue-400'
+                        }`}>
+                          {team.type || 'B2B'}
+                        </span>
+                      </div>
                     </div>
                   </div>
 
@@ -282,6 +295,34 @@ export const TeamsListPage: React.FC<TeamsListPageProps> = ({ onNavigateToBudget
                 <span className="text-xs font-mono text-muted-foreground">{teamColor}</span>
               </div>
             </div>
+          </div>
+
+          {/* Team Type: B2B / B2C */}
+          <div>
+            <label className="block text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-1.5">
+              Team Type *
+            </label>
+            <div className="flex gap-2">
+              {(['B2B', 'B2C'] as const).map(t => (
+                <button
+                  key={t}
+                  type="button"
+                  onClick={() => setTeamType(t)}
+                  className={`flex-1 h-10 rounded-lg text-xs font-bold border-2 transition-all ${
+                    teamType === t
+                      ? t === 'B2B'
+                        ? 'bg-blue-500 text-white border-blue-500 shadow-sm'
+                        : 'bg-emerald-500 text-white border-emerald-500 shadow-sm'
+                      : 'bg-background text-muted-foreground border-input hover:border-primary/50'
+                  }`}
+                >
+                  {t === 'B2B' ? '🏢 B2B' : '🛒 B2C'}
+                </button>
+              ))}
+            </div>
+            <p className="text-[10px] text-muted-foreground mt-1">
+              {teamType === 'B2B' ? 'Business-to-Business: serves other companies and enterprises' : 'Business-to-Consumer: serves individual end customers'}
+            </p>
           </div>
 
           <Select
