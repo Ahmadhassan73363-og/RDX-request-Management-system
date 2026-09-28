@@ -11,6 +11,8 @@ export type AuditActionType =
   | 'TEAM_CREATE'
   | 'TEAM_UPDATE'
   | 'TEAM_DELETE'
+  | 'TEAM_ACTIVATE'
+  | 'TEAM_DEACTIVATE'
   | 'BUDGET_ALLOCATE'
   | 'BUDGET_ADJUST'
   | 'BUDGET_OVERRIDE'
