@@ -113,8 +113,9 @@ export const NewRequestModal: React.FC<NewRequestModalProps> = ({ isOpen, onClos
   const [category, setCategory] = useState<'Sample' | 'Gift'>('Sample');
   // 7. System Invoice no.
   const [systemInvoiceNo, setSystemInvoiceNo] = useState('');
-  // 8. Currency: Strictly British Pound (£ GBP) at generation time
-  const currency = 'GBP';
+  // 8. Currency: follows the selected Issuing Company's default currency
+  const selectedCompanyObj = companies.find(c => c.id === companyId);
+  const currency = selectedCompanyObj?.defaultCurrency || 'GBP';
 
   // Department (kept for compatibility)
   const [department, setDepartment] = useState(currentUser.department || 'Commercial Sales');
@@ -286,10 +287,6 @@ export const NewRequestModal: React.FC<NewRequestModalProps> = ({ isOpen, onClos
   const currentRemaining = selectedTeam ? selectedTeam.remainingBudget : 0;
   const projectedBalance = currentRemaining - grandSkuTotal;
   const isOverBudget = projectedBalance < 0;
-
-  // Currency label from selected company
-  const selectedCompanyObj = companies.find(c => c.id === companyId);
-  const currencyLabel = selectedCompanyObj?.defaultCurrency || 'USD';
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -776,10 +773,10 @@ export const NewRequestModal: React.FC<NewRequestModalProps> = ({ isOpen, onClos
                   </span>
                 </div>
 
-                {/* Fixed Currency Badge: Always Pound (£) */}
+                {/* Currency Badge: follows the Issuing Company's default currency */}
                 <div className="flex items-center gap-1.5 px-3 py-1 rounded-lg bg-background border border-border shadow-2xs">
                   <span className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider">Currency:</span>
-                  <span className="text-xs font-bold text-foreground font-mono">Pound (£ GBP)</span>
+                  <span className="text-xs font-bold text-foreground font-mono">{currencySymbol} {currency}</span>
                 </div>
 
                 <Button
@@ -847,14 +844,14 @@ export const NewRequestModal: React.FC<NewRequestModalProps> = ({ isOpen, onClos
                           />
                         </div>
 
-                        {/* Cost per unit: strictly in GBP (£) */}
+                        {/* Cost per unit: in the issuing company's currency */}
                         <div>
                           <label className="block text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-1.5">
-                            Cost Per Unit (£) *
+                            Cost Per Unit ({currencySymbol}) *
                           </label>
                           <div className="relative">
                             <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground font-mono text-xs">
-                              £
+                              {currencySymbol}
                             </span>
                             <input
                               type="number"
@@ -869,14 +866,14 @@ export const NewRequestModal: React.FC<NewRequestModalProps> = ({ isOpen, onClos
                           </div>
                         </div>
 
-                        {/* Line total in GBP */}
+                        {/* Line total in the issuing company's currency */}
                         <div>
                           <label className="block text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-1.5">
-                            Total (£)
+                            Total ({currencySymbol})
                           </label>
                           <div className="h-10 px-3 bg-muted/40 border border-border rounded-lg flex flex-col justify-center">
                             <span className="font-mono font-bold text-sm text-foreground leading-tight">
-                              £{lineTotal.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                              {currencySymbol}{lineTotal.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                             </span>
                           </div>
                         </div>
@@ -886,14 +883,14 @@ export const NewRequestModal: React.FC<NewRequestModalProps> = ({ isOpen, onClos
                 })}
               </div>
 
-              {/* Grand Total Banner (Pounds) */}
+              {/* Grand Total Banner */}
               <div className="p-3.5 rounded-xl bg-card border-2 border-primary/30 flex items-center justify-between shadow-xs">
                 <div>
                   <div className="text-[10px] font-bold uppercase text-muted-foreground tracking-wider mb-0.5">
-                    Grand Total (£ GBP)
+                    Grand Total ({currencySymbol} {currency})
                   </div>
                   <div className="text-xl font-extrabold font-mono text-primary">
-                    £{grandSkuTotal.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                    {currencySymbol}{grandSkuTotal.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                   </div>
                 </div>
                 <div className="text-xs text-muted-foreground text-right">
@@ -919,7 +916,7 @@ export const NewRequestModal: React.FC<NewRequestModalProps> = ({ isOpen, onClos
                   <div className="flex items-center justify-between text-[11px]">
                     <span>After approval:</span>
                     <span className="font-mono font-bold">
-                      -{grandSkuTotal.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} → Projected: ${(projectedBalance || 0).toLocaleString()}
+                      -{currencySymbol}{grandSkuTotal.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} → Projected: ${(projectedBalance || 0).toLocaleString()}
                     </span>
                   </div>
                   {isOverBudget && (

@@ -23,7 +23,7 @@ import { Warehouse } from '../types/warehouse';
 import { Customer } from '../types/customer';
 import { RequestRecord, RequestStatus, RequestPriority, SkuItem, ShipmentStatus, AdditionalField } from '../types/request';
 import { FormSchema, FormAssignment, FormSubmission } from '../types/form';
-import { currencyService } from './currencyService';
+import { currencyService, normalizeLedgerCurrency } from './currencyService';
 import { BudgetTransaction, BudgetActionType } from '../types/budget';
 import { Notification, NotificationType } from '../types/notification';
 import { AuditLog, AuditActionType } from '../types/audit';
@@ -1403,8 +1403,12 @@ class DataService {
 
     // When shipment is processed / delivered / dispatched, capture live real-time currency rates (GBP to USD, EUR, AED)
     if (status === 'delivered' || status === 'dispatched' || status === 'in_process') {
+      // baseAmount is stored in the request's OWN currency, not GBP — convert it
+      // to its GBP equivalent first, or convertGbp below double-applies the rate.
       const baseAmount = req.sampleSkuTotal || req.budgetAmount || req.requestValue || 0;
-      const initialConverted = currencyService.convertGbp(baseAmount);
+      const nativeCurrency = normalizeLedgerCurrency(req.currency);
+      const baseAmountGbp = currencyService.toGbp(baseAmount, nativeCurrency);
+      const initialConverted = currencyService.convertGbp(baseAmountGbp);
       req.deliveredCurrencyRates = {
         fetchedAt: new Date().toISOString(),
         usdRate: initialConverted.usdRate,
@@ -1421,7 +1425,8 @@ class DataService {
       const capturedStatus = status;
       const capturedRequestId = req.id;
       currencyService.getLiveRates(true).then(freshRates => {
-        const freshConverted = currencyService.convertGbp(baseAmount, freshRates);
+        const freshBaseAmountGbp = currencyService.toGbp(baseAmount, nativeCurrency, freshRates);
+        const freshConverted = currencyService.convertGbp(freshBaseAmountGbp, freshRates);
         const freshRatePayload = {
           fetchedAt: freshRates.timestamp,
           usdRate: freshConverted.usdRate,

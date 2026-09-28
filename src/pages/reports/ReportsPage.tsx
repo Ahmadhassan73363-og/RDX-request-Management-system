@@ -14,14 +14,14 @@ import {
   DollarSign
 } from 'lucide-react';
 import { dataService } from '../../services/dataService';
-import { currencyService, ExchangeRatesData } from '../../services/currencyService';
+import { currencyService, ExchangeRatesData, normalizeLedgerCurrency } from '../../services/currencyService';
 import { useSystem } from '../../context/SystemContext';
 import { Card, CardHeader, CardTitle, CardContent } from '../../components/common/Card';
 import { Button } from '../../components/common/Button';
 import { StatusBadge } from '../../components/common/Badge';
 import { exportToExcel } from '../../utils/exportExcel';
 import { useSyncedState } from '../../hooks/useSyncedState';
-import { ShipmentStatus } from '../../types/request';
+import { ShipmentStatus, RequestRecord } from '../../types/request';
 
 export const ReportsPage: React.FC = () => {
   const { settings } = useSystem();
@@ -69,9 +69,19 @@ export const ReportsPage: React.FC = () => {
     });
   }, [allRequests, selectedTeam, selectedCategory, selectedStatus, selectedUser, selectedShipment]);
 
+  // Each request is stored in its OWN currency (its issuing company's default
+  // currency), not GBP — GBP is only the base the live rates are quoted in. So
+  // every amount has to be converted to its GBP equivalent individually before
+  // being aggregated or re-converted into another display currency; treating
+  // the raw stored number as if it were already GBP double-applies the rate.
+  const getGbpEquivalent = (r: RequestRecord) => {
+    const raw = r.sampleSkuTotal || r.budgetAmount || 0;
+    return currencyService.toGbp(raw, normalizeLedgerCurrency(r.currency), fxRates);
+  };
+
   // Aggregate metrics (Pound Base)
   const totalVolume = filteredRequests.length;
-  const totalBudgetSpentGbp = filteredRequests.reduce((sum, r) => sum + (r.sampleSkuTotal || r.budgetAmount || 0), 0);
+  const totalBudgetSpentGbp = filteredRequests.reduce((sum, r) => sum + getGbpEquivalent(r), 0);
   const avgRequestValueGbp = totalVolume > 0 ? Math.round(totalBudgetSpentGbp / totalVolume) : 0;
   const approvedCount = filteredRequests.filter(r => r.status === 'approved' || r.status === 'completed').length;
   const approvalRate = totalVolume > 0 ? Math.round((approvedCount / totalVolume) * 100) : 0;
@@ -105,7 +115,7 @@ export const ReportsPage: React.FC = () => {
       ];
 
       const rows = filteredRequests.map(r => {
-        const amountGbp = r.sampleSkuTotal || r.budgetAmount || 0;
+        const amountGbp = getGbpEquivalent(r);
         const hasDeliveredRates = !!r.deliveredCurrencyRates;
         const usdVal = hasDeliveredRates ? r.deliveredCurrencyRates!.totalUsd : Math.round(amountGbp * (fxRates.rates.USD || 1.32) * 100) / 100;
         const eurVal = hasDeliveredRates ? r.deliveredCurrencyRates!.totalEur : Math.round(amountGbp * (fxRates.rates.EUR || 1.16) * 100) / 100;
@@ -147,7 +157,7 @@ export const ReportsPage: React.FC = () => {
         totalAed
       },
       requests: filteredRequests.map(r => {
-        const amountGbp = r.sampleSkuTotal || r.budgetAmount || 0;
+        const amountGbp = getGbpEquivalent(r);
         const hasDeliveredRates = !!r.deliveredCurrencyRates;
         return {
           ...r,
@@ -457,7 +467,7 @@ export const ReportsPage: React.FC = () => {
                   </tr>
                 ) : (
                   filteredRequests.map((req) => {
-                    const amountGbp = req.sampleSkuTotal || req.budgetAmount || 0;
+                    const amountGbp = getGbpEquivalent(req);
                     const hasDeliveredRates = !!req.deliveredCurrencyRates;
                     const usdVal = hasDeliveredRates
                       ? req.deliveredCurrencyRates!.totalUsd

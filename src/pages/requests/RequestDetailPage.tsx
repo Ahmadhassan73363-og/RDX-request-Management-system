@@ -29,7 +29,7 @@ import { RequestRecord, RequestStatus, ShipmentStatus } from '../../types/reques
 import { getCurrencySymbol } from '../../types/company';
 import { useAuth } from '../../context/AuthContext';
 import { dataService } from '../../services/dataService';
-import { currencyService, ExchangeRatesData } from '../../services/currencyService';
+import { currencyService, ExchangeRatesData, normalizeLedgerCurrency } from '../../services/currencyService';
 import { Button } from '../../components/common/Button';
 import { Card, CardHeader, CardTitle, CardContent } from '../../components/common/Card';
 import { StatusBadge, PriorityBadge } from '../../components/common/Badge';
@@ -132,9 +132,19 @@ export const RequestDetailPage: React.FC<RequestDetailPageProps> = ({ requestId,
     AED: { label: 'AED', symbol: 'د.إ ', name: 'UAE Dirham' }
   };
 
+  // Amounts on a request are stored in the request's OWN currency (whatever the
+  // issuing company's default currency was at submission time) — not GBP. GBP is
+  // only the base the live FX rates are quoted against. So before converting into
+  // the currently-selected view currency, we first have to convert the stored
+  // value back OUT of its native currency into GBP, then into the target — going
+  // straight from the raw stored number to another currency (as if it were
+  // already GBP) silently double-applies the rate in the wrong direction.
+  const nativeCurrency = normalizeLedgerCurrency(request?.currency);
+
   const formatAmount = (val: number, cur: LedgerCurrency = selectedCurrency) => {
-    const rate = effectiveRates[cur];
-    const converted = val * rate;
+    const nativeRate = effectiveRates[nativeCurrency] || 1; // units of nativeCurrency per 1 GBP
+    const valueInGbp = val / nativeRate;
+    const converted = valueInGbp * effectiveRates[cur];
     return `${currencyConfig[cur].symbol}${converted.toLocaleString(undefined, {
       minimumFractionDigits: 2,
       maximumFractionDigits: 2
@@ -743,13 +753,13 @@ export const RequestDetailPage: React.FC<RequestDetailPageProps> = ({ requestId,
                     <Globe className="w-3.5 h-3.5 text-primary" />
                     Currency View
                   </span>
-                  {selectedCurrency !== 'GBP' ? (
+                  {selectedCurrency !== nativeCurrency ? (
                     <span className="text-[11px] font-mono font-bold text-primary bg-primary/10 border border-primary/20 px-2 py-0.5 rounded-md">
-                      1 GBP = {effectiveRates[selectedCurrency].toFixed(4)} {selectedCurrency}
+                      1 {nativeCurrency} = {(effectiveRates[selectedCurrency] / effectiveRates[nativeCurrency]).toFixed(4)} {selectedCurrency}
                     </span>
                   ) : (
                     <span className="text-[11px] font-mono text-emerald-600 dark:text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded-md font-medium">
-                      Base Currency (£ GBP)
+                      Native Currency ({currencyConfig[nativeCurrency].symbol.trim()} {nativeCurrency})
                     </span>
                   )}
                 </div>
@@ -790,6 +800,13 @@ export const RequestDetailPage: React.FC<RequestDetailPageProps> = ({ requestId,
                     >
                       {useDeliveredRates ? 'Switch to Live Rates' : 'Switch to Delivery Rates'}
                     </button>
+                  )}
+                </div>
+
+                {/* Rate provenance: proves this is a real fetched/saved rate, not a guess */}
+                <div className="text-[9px] text-muted-foreground/80 px-0.5">
+                  Source: open.er-api.com{effectiveRates.timestamp && (
+                    <> · {effectiveRates.isDelivered ? 'saved' : 'fetched'} {new Date(effectiveRates.timestamp).toLocaleString()}</>
                   )}
                 </div>
               </div>
@@ -854,7 +871,7 @@ export const RequestDetailPage: React.FC<RequestDetailPageProps> = ({ requestId,
                             {currencyConfig[cur].symbol.trim()} {cur}
                           </span>
                           <span className="text-muted-foreground font-mono text-[9px]">
-                            {cur === 'GBP' ? 'Base' : `@${rate.toFixed(2)}`}
+                            {cur === nativeCurrency ? 'Native' : `@${(rate / effectiveRates[nativeCurrency]).toFixed(2)}`}
                           </span>
                         </div>
                         <div className="text-xs font-bold font-mono text-primary mt-1">

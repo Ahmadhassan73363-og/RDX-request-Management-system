@@ -12,6 +12,20 @@ export interface ExchangeRatesData {
   timestamp: string;
 }
 
+export type LedgerCurrencyCode = 'GBP' | 'USD' | 'EUR' | 'AED';
+
+// Normalizes whatever a request/company has stored as its currency (a proper
+// ISO code like 'USD', or a legacy symbol like '$' from older records) down to
+// one of the four codes the live FX rates are quoted for. Falls back to GBP —
+// the rates' own base — for anything unrecognized (e.g. CAD/AUD) so callers
+// always get a valid key into ExchangeRatesData.rates.
+export function normalizeLedgerCurrency(raw?: string): LedgerCurrencyCode {
+  if (raw === 'USD' || raw === '$') return 'USD';
+  if (raw === 'EUR' || raw === '€') return 'EUR';
+  if (raw === 'AED' || raw === 'د.إ') return 'AED';
+  return 'GBP';
+}
+
 const STORAGE_KEY = 'rdx_live_fx_rates';
 
 // Standard fallback rates in case client is offline or network fails
@@ -124,6 +138,19 @@ class CurrencyService {
    */
   public getCachedRates(): ExchangeRatesData {
     return this.cachedRates || DEFAULT_FALLBACK_RATES;
+  }
+
+  /**
+   * Converts an amount FROM its own native currency INTO its GBP equivalent,
+   * using the given (or cached) rates. Rates are quoted as "units of X per 1
+   * GBP", so going the other way — native currency back to GBP — divides
+   * rather than multiplies.
+   */
+  public toGbp(amount: number, nativeCurrency: LedgerCurrencyCode, ratesData?: ExchangeRatesData): number {
+    if (nativeCurrency === 'GBP') return amount;
+    const data = ratesData || this.getCachedRates();
+    const rate = data.rates[nativeCurrency] || 1;
+    return amount / rate;
   }
 
   /**
