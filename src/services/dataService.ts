@@ -970,8 +970,26 @@ class DataService {
     const discountMultiplier = Math.max(0, 1 - ((payload.discountPercentage || 0) / 100));
     const discountBudgetAmount = Math.round((Number(payload.requestValue) || 0) * discountMultiplier * 100) / 100;
 
-    const budgetAmount = calculatedSkuTotal > 0 ? calculatedSkuTotal : (discountBudgetAmount > 0 ? discountBudgetAmount : (Number(payload.requestValue) || 0));
-    const requestValue = (Number(payload.requestValue) || 0) > 0 ? Number(payload.requestValue) : budgetAmount;
+    const rawBudgetAmount = calculatedSkuTotal > 0 ? calculatedSkuTotal : (discountBudgetAmount > 0 ? discountBudgetAmount : (Number(payload.requestValue) || 0));
+    // requestValue stays in the request's own currency (what was actually agreed/entered) —
+    // it's a record of the original transaction, not the internal accounting figure.
+    const requestValue = (Number(payload.requestValue) || 0) > 0 ? Number(payload.requestValue) : rawBudgetAmount;
+
+    // Team budgets are held and reported in GBP company-wide, so the amount actually
+    // charged against a team's pool must be the GBP equivalent, not the raw entered
+    // number — otherwise a $100 USD request would deduct 100 straight from a GBP pool.
+    const nativeCurrency = normalizeLedgerCurrency(payload.currency);
+    const fxSnapshot = currencyService.getCachedRates();
+    const gbpExchangeRate = nativeCurrency === 'GBP' ? 1 : (fxSnapshot.rates[nativeCurrency] || 1);
+    const budgetAmount = nativeCurrency === 'GBP'
+      ? rawBudgetAmount
+      : Math.round(currencyService.toGbp(rawBudgetAmount, nativeCurrency, fxSnapshot) * 100) / 100;
+    const sampleSkuTotalGbp = nativeCurrency === 'GBP'
+      ? calculatedSkuTotal
+      : Math.round(currencyService.toGbp(calculatedSkuTotal, nativeCurrency, fxSnapshot) * 100) / 100;
+    const sampleSkuCostPerUnitGbp = nativeCurrency === 'GBP'
+      ? numCostPerUnit
+      : Math.round(currencyService.toGbp(numCostPerUnit, nativeCurrency, fxSnapshot) * 100) / 100;
 
     const remainingBudget = team.remainingBudget;
     const budgetAfterApproval = remainingBudget - budgetAmount;
@@ -1027,9 +1045,9 @@ class DataService {
       sampleSkuQty: numQty,
       sampleSkuCostPerUnit: numCostPerUnit,
       sampleSkuTotal: calculatedSkuTotal,
-      sampleSkuCostPerUnitGbp: payload.sampleSkuCostPerUnitGbp,
-      sampleSkuTotalGbp: payload.sampleSkuTotalGbp,
-      gbpExchangeRate: payload.gbpExchangeRate,
+      sampleSkuCostPerUnitGbp,
+      sampleSkuTotalGbp,
+      gbpExchangeRate,
       agentName: payload.agentName || payload.agentOrTeamName,
       agentUserId: payload.agentUserId,
       ourCompanyName: payload.ourCompanyName || payload.companyName,

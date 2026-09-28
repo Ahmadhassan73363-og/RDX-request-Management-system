@@ -2,29 +2,21 @@ import React, { useState, useMemo, useEffect } from 'react';
 import {
   BarChart3,
   Download,
-  Calendar,
   Filter,
-  CheckCircle2,
-  Users2,
   FileSpreadsheet,
   RefreshCw,
-  Globe,
-  TrendingUp,
-  Truck,
-  DollarSign
+  Globe
 } from 'lucide-react';
 import { dataService } from '../../services/dataService';
 import { currencyService, ExchangeRatesData, normalizeLedgerCurrency } from '../../services/currencyService';
-import { useSystem } from '../../context/SystemContext';
 import { Card, CardHeader, CardTitle, CardContent } from '../../components/common/Card';
 import { Button } from '../../components/common/Button';
-import { StatusBadge } from '../../components/common/Badge';
 import { exportToExcel } from '../../utils/exportExcel';
 import { useSyncedState } from '../../hooks/useSyncedState';
-import { ShipmentStatus, RequestRecord } from '../../types/request';
+import { RequestRecord } from '../../types/request';
+import { getCurrencySymbol } from '../../types/company';
 
 export const ReportsPage: React.FC = () => {
-  const { settings } = useSystem();
   const [allRequests] = useSyncedState(() => dataService.getRequests());
   const [teams] = useSyncedState(() => dataService.getTeams());
   const [users] = useSyncedState(() => dataService.getUsers());
@@ -72,24 +64,20 @@ export const ReportsPage: React.FC = () => {
   // Each request is stored in its OWN currency (its issuing company's default
   // currency), not GBP — GBP is only the base the live rates are quoted in. So
   // every amount has to be converted to its GBP equivalent individually before
-  // being aggregated or re-converted into another display currency; treating
-  // the raw stored number as if it were already GBP double-applies the rate.
+  // being aggregated; treating the raw stored number as if it were already GBP
+  // double-applies the rate. Only the GBP figure is shown — not every currency.
   const getGbpEquivalent = (r: RequestRecord) => {
     const raw = r.sampleSkuTotal || r.budgetAmount || 0;
     return currencyService.toGbp(raw, normalizeLedgerCurrency(r.currency), fxRates);
   };
+  const getNativeAmount = (r: RequestRecord) => r.sampleSkuTotal || r.budgetAmount || 0;
 
-  // Aggregate metrics (Pound Base)
+  // Aggregate metrics (GBP — the company's reporting currency)
   const totalVolume = filteredRequests.length;
   const totalBudgetSpentGbp = filteredRequests.reduce((sum, r) => sum + getGbpEquivalent(r), 0);
-  const avgRequestValueGbp = totalVolume > 0 ? Math.round(totalBudgetSpentGbp / totalVolume) : 0;
+  const avgRequestValueGbp = totalVolume > 0 ? totalBudgetSpentGbp / totalVolume : 0;
   const approvedCount = filteredRequests.filter(r => r.status === 'approved' || r.status === 'completed').length;
   const approvalRate = totalVolume > 0 ? Math.round((approvedCount / totalVolume) * 100) : 0;
-
-  // Real-time aggregate conversions
-  const totalUsd = Math.round(totalBudgetSpentGbp * (fxRates.rates.USD || 1.32) * 100) / 100;
-  const totalEur = Math.round(totalBudgetSpentGbp * (fxRates.rates.EUR || 1.16) * 100) / 100;
-  const totalAed = Math.round(totalBudgetSpentGbp * (fxRates.rates.AED || 4.85) * 100) / 100;
 
   // Export functions
   const [isExportingExcel, setIsExportingExcel] = useState(false);
@@ -105,39 +93,27 @@ export const ReportsPage: React.FC = () => {
         'Category',
         'Item / Sample',
         'Shipment Status',
-        'Amount (£ GBP)',
-        'Amount ($ USD)',
-        'Amount (€ EUR)',
-        'Amount (AED د.إ)',
-        'Forex Valuation Type',
+        'Native Amount',
+        'Native Currency',
+        'GBP Equivalent',
         'Status',
         'Date'
       ];
 
-      const rows = filteredRequests.map(r => {
-        const amountGbp = getGbpEquivalent(r);
-        const hasDeliveredRates = !!r.deliveredCurrencyRates;
-        const usdVal = hasDeliveredRates ? r.deliveredCurrencyRates!.totalUsd : Math.round(amountGbp * (fxRates.rates.USD || 1.32) * 100) / 100;
-        const eurVal = hasDeliveredRates ? r.deliveredCurrencyRates!.totalEur : Math.round(amountGbp * (fxRates.rates.EUR || 1.16) * 100) / 100;
-        const aedVal = hasDeliveredRates ? r.deliveredCurrencyRates!.totalAed : Math.round(amountGbp * (fxRates.rates.AED || 4.85) * 100) / 100;
-
-        return [
-          r.trackingNumber || '',
-          r.customerName || '',
-          r.customerCompany || '',
-          r.teamName || '',
-          r.requestCategory || '',
-          r.requestItem || '',
-          r.shipmentStatus || 'approved',
-          amountGbp,
-          usdVal,
-          eurVal,
-          aedVal,
-          hasDeliveredRates ? `Delivered Rate (${r.deliveredCurrencyRates!.fetchedAt.split('T')[0]})` : 'Live Forex Rate',
-          r.status || '',
-          r.requestDate || ''
-        ];
-      });
+      const rows = filteredRequests.map(r => [
+        r.trackingNumber || '',
+        r.customerName || '',
+        r.customerCompany || '',
+        r.teamName || '',
+        r.requestCategory || '',
+        r.requestItem || '',
+        r.shipmentStatus || 'approved',
+        getNativeAmount(r),
+        r.currency || 'GBP',
+        getGbpEquivalent(r),
+        r.status || '',
+        r.requestDate || ''
+      ]);
 
       await exportToExcel(`executive_financial_report_${new Date().toISOString().split('T')[0]}`, 'Financial Report', headers, rows);
     } finally {
@@ -151,26 +127,11 @@ export const ReportsPage: React.FC = () => {
       liveForexRates: fxRates,
       totalVolume,
       totalSpendGbp: totalBudgetSpentGbp,
-      conversions: {
-        totalUsd,
-        totalEur,
-        totalAed
-      },
-      requests: filteredRequests.map(r => {
-        const amountGbp = getGbpEquivalent(r);
-        const hasDeliveredRates = !!r.deliveredCurrencyRates;
-        return {
-          ...r,
-          baseCurrency: 'GBP',
-          amountGbp,
-          conversions: {
-            usd: hasDeliveredRates ? r.deliveredCurrencyRates!.totalUsd : Math.round(amountGbp * (fxRates.rates.USD || 1.32) * 100) / 100,
-            eur: hasDeliveredRates ? r.deliveredCurrencyRates!.totalEur : Math.round(amountGbp * (fxRates.rates.EUR || 1.16) * 100) / 100,
-            aed: hasDeliveredRates ? r.deliveredCurrencyRates!.totalAed : Math.round(amountGbp * (fxRates.rates.AED || 4.85) * 100) / 100,
-            valuationType: hasDeliveredRates ? 'Delivered Rate' : 'Live Rate'
-          }
-        };
-      })
+      requests: filteredRequests.map(r => ({
+        ...r,
+        reportingCurrency: 'GBP',
+        amountGbp: getGbpEquivalent(r)
+      }))
     };
 
     const dataStr = 'data:text/json;charset=utf-8,' + encodeURIComponent(JSON.stringify(exportPayload, null, 2));
@@ -192,7 +153,7 @@ export const ReportsPage: React.FC = () => {
             Executive Financial & Workflow Reporting
           </h2>
           <p className="text-xs text-muted-foreground mt-0.5">
-            Audit-ready line-item ledger with real-time multi-currency valuation (GBP → USD, EUR, AED)
+            Audit-ready line-item ledger — every request converted to GBP, the company's reporting currency
           </p>
         </div>
 
@@ -217,23 +178,23 @@ export const ReportsPage: React.FC = () => {
         </div>
       </div>
 
-      {/* Real-time Live Currency Exchange Rates Banner */}
+      {/* Live FX Rate Status */}
       <Card className="p-4 bg-card border-primary/20 shadow-xs">
-        <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 pb-3 border-b border-border/60">
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">
           <div className="flex items-center gap-2.5">
             <div className="w-8 h-8 rounded-lg bg-primary/10 text-primary flex items-center justify-center">
               <Globe className="w-4 h-4" />
             </div>
             <div>
               <div className="flex items-center gap-2">
-                <span className="text-xs font-bold text-foreground">Real-Time Currency Exchange Rates</span>
+                <span className="text-xs font-bold text-foreground">Live GBP Conversion Rate</span>
                 <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20">
                   <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
                   Live API Connected
                 </span>
               </div>
               <p className="text-[11px] text-muted-foreground">
-                Base Currency: <strong className="text-foreground font-mono">British Pound (£ 1.00 GBP)</strong> · Last updated: {fxTimestamp ? new Date(fxTimestamp).toLocaleTimeString() : 'Recent'}
+                Source: open.er-api.com · Base: British Pound (£ GBP) · Last updated: {fxTimestamp ? new Date(fxTimestamp).toLocaleTimeString() : 'Recent'}
               </p>
             </div>
           </div>
@@ -249,45 +210,6 @@ export const ReportsPage: React.FC = () => {
           >
             {isLoadingFx ? 'Fetching Rates...' : 'Refresh Live Rates'}
           </Button>
-        </div>
-
-        {/* Currency Rate Pills */}
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-3">
-          <div className="p-3 rounded-lg bg-background border border-border/70 flex items-center justify-between">
-            <div>
-              <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">USD Conversion</span>
-              <p className="text-base font-extrabold font-mono text-foreground mt-0.5">
-                $ {(fxRates.rates.USD || 1.32).toFixed(4)}
-              </p>
-            </div>
-            <span className="text-[11px] font-bold px-2 py-0.5 rounded bg-blue-500/10 text-blue-600 dark:text-blue-400 font-mono">
-              1 £ = ${ (fxRates.rates.USD || 1.32).toFixed(2) }
-            </span>
-          </div>
-
-          <div className="p-3 rounded-lg bg-background border border-border/70 flex items-center justify-between">
-            <div>
-              <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">EUR Conversion</span>
-              <p className="text-base font-extrabold font-mono text-foreground mt-0.5">
-                € {(fxRates.rates.EUR || 1.16).toFixed(4)}
-              </p>
-            </div>
-            <span className="text-[11px] font-bold px-2 py-0.5 rounded bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 font-mono">
-              1 £ = €{ (fxRates.rates.EUR || 1.16).toFixed(2) }
-            </span>
-          </div>
-
-          <div className="p-3 rounded-lg bg-background border border-border/70 flex items-center justify-between">
-            <div>
-              <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">AED Conversion</span>
-              <p className="text-base font-extrabold font-mono text-foreground mt-0.5">
-                د.إ {(fxRates.rates.AED || 4.85).toFixed(4)}
-              </p>
-            </div>
-            <span className="text-[11px] font-bold px-2 py-0.5 rounded bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 font-mono">
-              1 £ = د.إ { (fxRates.rates.AED || 4.85).toFixed(2) }
-            </span>
-          </div>
         </div>
       </Card>
 
@@ -381,9 +303,8 @@ export const ReportsPage: React.FC = () => {
         </div>
       </Card>
 
-      {/* Metric Cards with Multi-Currency Values */}
+      {/* Metric Cards (GBP — the company's reporting currency) */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        {/* Pound Base */}
         <Card className="p-4 border-primary/30">
           <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
             Total Net Spend (£ GBP)
@@ -394,37 +315,34 @@ export const ReportsPage: React.FC = () => {
           <p className="text-[11px] text-muted-foreground mt-1">Across {totalVolume} filtered requests</p>
         </Card>
 
-        {/* Real-time USD Valuation */}
         <Card className="p-4">
           <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-            USD Valuation ($)
+            Total Requests
           </span>
-          <div className="text-2xl font-bold font-mono text-blue-600 dark:text-blue-400 mt-1.5">
-            ${(totalUsd || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+          <div className="text-2xl font-bold font-mono text-foreground mt-1.5">
+            {totalVolume}
           </div>
-          <p className="text-[11px] text-muted-foreground mt-1">Converted at live rate ($ {(fxRates.rates.USD || 1.32).toFixed(2)})</p>
+          <p className="text-[11px] text-muted-foreground mt-1">{approvedCount} approved / completed</p>
         </Card>
 
-        {/* Real-time EUR Valuation */}
         <Card className="p-4">
           <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-            EUR Valuation (€)
+            Avg Request Value (£ GBP)
           </span>
-          <div className="text-2xl font-bold font-mono text-indigo-600 dark:text-indigo-400 mt-1.5">
-            €{(totalEur || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+          <div className="text-2xl font-bold font-mono text-foreground mt-1.5">
+            £{(avgRequestValueGbp || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
           </div>
-          <p className="text-[11px] text-muted-foreground mt-1">Converted at live rate (€ {(fxRates.rates.EUR || 1.16).toFixed(2)})</p>
+          <p className="text-[11px] text-muted-foreground mt-1">Per request, this filter set</p>
         </Card>
 
-        {/* Real-time AED Valuation */}
         <Card className="p-4">
           <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-            AED Valuation (د.إ)
+            Approval Rate
           </span>
-          <div className="text-2xl font-bold font-mono text-emerald-600 dark:text-emerald-400 mt-1.5">
-            د.إ {(totalAed || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+          <div className="text-2xl font-bold font-mono text-foreground mt-1.5">
+            {approvalRate}%
           </div>
-          <p className="text-[11px] text-muted-foreground mt-1">Converted at live rate (د.إ {(fxRates.rates.AED || 4.85).toFixed(2)})</p>
+          <p className="text-[11px] text-muted-foreground mt-1">{approvedCount} of {totalVolume} requests</p>
         </Card>
       </div>
 
@@ -432,9 +350,9 @@ export const ReportsPage: React.FC = () => {
       <Card>
         <CardHeader className="flex flex-row items-center justify-between">
           <div>
-            <CardTitle>Detailed Line Item Ledger & Multi-Currency Valuation</CardTitle>
+            <CardTitle>Detailed Line Item Ledger</CardTitle>
             <p className="text-xs text-muted-foreground mt-0.5">
-              Live conversions update automatically; delivered items retain the exact forex rate captured at delivery
+              Each request shown in the currency it was submitted in, with its live GBP equivalent
             </p>
           </div>
           <div className="text-xs font-mono text-muted-foreground">
@@ -451,34 +369,24 @@ export const ReportsPage: React.FC = () => {
                   <th className="p-3">Team</th>
                   <th className="p-3">Item / SKU</th>
                   <th className="p-3">Shipment</th>
-                  <th className="p-3 text-right">Pound (£ GBP)</th>
-                  <th className="p-3 text-right">USD ($)</th>
-                  <th className="p-3 text-right">EUR (€)</th>
-                  <th className="p-3 text-right">AED (د.إ)</th>
+                  <th className="p-3 text-right">Native Amount</th>
+                  <th className="p-3 text-right">GBP Equivalent</th>
                   <th className="p-3 pr-4 text-right">Date</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-border/60">
                 {filteredRequests.length === 0 ? (
                   <tr>
-                    <td colSpan={10} className="p-6 text-center text-muted-foreground text-xs">
+                    <td colSpan={8} className="p-6 text-center text-muted-foreground text-xs">
                       No records match the selected dimension filters.
                     </td>
                   </tr>
                 ) : (
                   filteredRequests.map((req) => {
+                    const nativeCurrency = req.currency || 'GBP';
+                    const nativeAmount = getNativeAmount(req);
                     const amountGbp = getGbpEquivalent(req);
-                    const hasDeliveredRates = !!req.deliveredCurrencyRates;
-                    const usdVal = hasDeliveredRates
-                      ? req.deliveredCurrencyRates!.totalUsd
-                      : Math.round(amountGbp * (fxRates.rates.USD || 1.32) * 100) / 100;
-                    const eurVal = hasDeliveredRates
-                      ? req.deliveredCurrencyRates!.totalEur
-                      : Math.round(amountGbp * (fxRates.rates.EUR || 1.16) * 100) / 100;
-                    const aedVal = hasDeliveredRates
-                      ? req.deliveredCurrencyRates!.totalAed
-                      : Math.round(amountGbp * (fxRates.rates.AED || 4.85) * 100) / 100;
-
+                    const isGbp = normalizeLedgerCurrency(nativeCurrency) === 'GBP';
                     const shipStatus = req.shipmentStatus || 'approved';
 
                     return (
@@ -511,26 +419,12 @@ export const ReportsPage: React.FC = () => {
                             {shipStatus === 'delivered' ? '✓ Delivered' : shipStatus}
                           </span>
                         </td>
-                        <td className="p-3 text-right font-mono font-bold text-foreground whitespace-nowrap">
-                          £{amountGbp.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                        <td className="p-3 text-right font-mono text-foreground whitespace-nowrap">
+                          {getCurrencySymbol(nativeCurrency)}{nativeAmount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                          <span className="block text-[8px] text-muted-foreground leading-tight">{nativeCurrency}</span>
                         </td>
-                        <td className="p-3 text-right font-mono text-blue-600 dark:text-blue-400 whitespace-nowrap">
-                          ${usdVal.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                          {hasDeliveredRates && (
-                            <span className="block text-[8px] text-muted-foreground leading-tight">Delivered Rate</span>
-                          )}
-                        </td>
-                        <td className="p-3 text-right font-mono text-indigo-600 dark:text-indigo-400 whitespace-nowrap">
-                          €{eurVal.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                          {hasDeliveredRates && (
-                            <span className="block text-[8px] text-muted-foreground leading-tight">Delivered Rate</span>
-                          )}
-                        </td>
-                        <td className="p-3 text-right font-mono text-emerald-600 dark:text-emerald-400 whitespace-nowrap">
-                          د.إ {aedVal.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                          {hasDeliveredRates && (
-                            <span className="block text-[8px] text-muted-foreground leading-tight">Delivered Rate</span>
-                          )}
+                        <td className="p-3 text-right font-mono font-bold text-primary whitespace-nowrap">
+                          {isGbp ? '—' : `£${amountGbp.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
                         </td>
                         <td className="p-3 pr-4 text-right font-mono text-muted-foreground whitespace-nowrap">
                           {req.requestDate}
@@ -543,20 +437,11 @@ export const ReportsPage: React.FC = () => {
               {filteredRequests.length > 0 && (
                 <tfoot>
                   <tr className="border-t-2 border-border bg-primary/5 font-bold text-xs">
-                    <td colSpan={5} className="p-3 pl-4 text-foreground">
-                      Grand Totals ({filteredRequests.length} Submissions)
+                    <td colSpan={6} className="p-3 pl-4 text-foreground">
+                      Grand Total ({filteredRequests.length} Submissions)
                     </td>
                     <td className="p-3 text-right font-mono text-primary">
                       £{totalBudgetSpentGbp.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                    </td>
-                    <td className="p-3 text-right font-mono text-blue-600 dark:text-blue-400">
-                      ${totalUsd.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                    </td>
-                    <td className="p-3 text-right font-mono text-indigo-600 dark:text-indigo-400">
-                      €{totalEur.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                    </td>
-                    <td className="p-3 text-right font-mono text-emerald-600 dark:text-emerald-400">
-                      د.إ {totalAed.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                     </td>
                     <td className="p-3 pr-4" />
                   </tr>

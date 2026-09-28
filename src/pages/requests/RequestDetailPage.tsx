@@ -80,9 +80,9 @@ export const RequestDetailPage: React.FC<RequestDetailPageProps> = ({ requestId,
   const [appealError, setAppealError] = useState('');
   const [isShipmentModalOpen, setIsShipmentModalOpen] = useState(false);
 
-  // Multi-Currency Selection & Live FX Rates
-  type LedgerCurrency = 'GBP' | 'USD' | 'EUR' | 'AED';
-  const [selectedCurrency, setSelectedCurrency] = useState<LedgerCurrency>('GBP');
+  // Live FX Rates — this page only ever shows amounts converted TO GBP (the
+  // company's reporting currency), never a switcher across other currencies.
+  type LedgerCurrency = 'GBP' | 'USD' | 'EUR' | 'AED' | 'CAD';
   const [fxRates, setFxRates] = useState<ExchangeRatesData>(() => currencyService.getCachedRates());
   const [isLoadingFx, setIsLoadingFx] = useState(false);
   const [useDeliveredRates, setUseDeliveredRates] = useState(true);
@@ -111,6 +111,8 @@ export const RequestDetailPage: React.FC<RequestDetailPageProps> = ({ requestId,
         USD: request.deliveredCurrencyRates.usdRate || fxRates.rates.USD || 1.32,
         EUR: request.deliveredCurrencyRates.eurRate || fxRates.rates.EUR || 1.16,
         AED: request.deliveredCurrencyRates.aedRate || fxRates.rates.AED || 4.85,
+        // Delivery-time snapshots only ever captured USD/EUR/AED — CAD always uses the live rate.
+        CAD: fxRates.rates.CAD || 1.80,
         isDelivered: true,
         timestamp: request.deliveredCurrencyRates.fetchedAt
       };
@@ -120,6 +122,7 @@ export const RequestDetailPage: React.FC<RequestDetailPageProps> = ({ requestId,
       USD: fxRates.rates.USD || 1.32,
       EUR: fxRates.rates.EUR || 1.16,
       AED: fxRates.rates.AED || 4.85,
+      CAD: fxRates.rates.CAD || 1.80,
       isDelivered: false,
       timestamp: fxRates.timestamp
     };
@@ -129,26 +132,35 @@ export const RequestDetailPage: React.FC<RequestDetailPageProps> = ({ requestId,
     GBP: { label: 'GBP', symbol: '£', name: 'British Pound' },
     USD: { label: 'USD', symbol: '$', name: 'US Dollar' },
     EUR: { label: 'EUR', symbol: '€', name: 'Euro' },
-    AED: { label: 'AED', symbol: 'د.إ ', name: 'UAE Dirham' }
+    AED: { label: 'AED', symbol: 'د.إ ', name: 'UAE Dirham' },
+    CAD: { label: 'CAD', symbol: 'CA$', name: 'Canadian Dollar' }
   };
 
-  // Amounts on a request are stored in the request's OWN currency (whatever the
-  // issuing company's default currency was at submission time) — not GBP. GBP is
-  // only the base the live FX rates are quoted against. So before converting into
-  // the currently-selected view currency, we first have to convert the stored
-  // value back OUT of its native currency into GBP, then into the target — going
-  // straight from the raw stored number to another currency (as if it were
-  // already GBP) silently double-applies the rate in the wrong direction.
-  const nativeCurrency = normalizeLedgerCurrency(request?.currency);
+  // "Original / Retail Value" is recorded in the request's OWN currency (whatever
+  // the issuing company's default currency was at submission) — that's what was
+  // actually agreed with the customer. Team budgets, though, are held and reported
+  // in GBP company-wide, so budgetAmount (the internal accounting figure charged
+  // against the team's pool) is converted to GBP at submission time — see
+  // dataService.createRequest. A request created before that conversion existed
+  // has no gbpExchangeRate saved, so its budgetAmount is still the raw native
+  // number and must be treated the same way as requestValue for display.
+  const nativeCurrency = normalizeLedgerCurrency(request?.currency) as LedgerCurrency;
+  const budgetIsGbpNative = nativeCurrency === 'GBP' || Boolean(request?.gbpExchangeRate);
+  const budgetValueCurrency: LedgerCurrency = budgetIsGbpNative ? 'GBP' : nativeCurrency;
 
-  const formatAmount = (val: number, cur: LedgerCurrency = selectedCurrency) => {
-    const nativeRate = effectiveRates[nativeCurrency] || 1; // units of nativeCurrency per 1 GBP
-    const valueInGbp = val / nativeRate;
-    const converted = valueInGbp * effectiveRates[cur];
-    return `${currencyConfig[cur].symbol}${converted.toLocaleString(undefined, {
-      minimumFractionDigits: 2,
-      maximumFractionDigits: 2
-    })}`;
+  // Converts val (denominated in valueCurrency) into its GBP figure.
+  const formatGbp = (val: number, valueCurrency: LedgerCurrency = 'GBP') => {
+    const rate = effectiveRates[valueCurrency] || 1; // units of valueCurrency per 1 GBP
+    const gbp = val / rate;
+    return `£${gbp.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+  };
+
+  // Shows val in its own currency, and — only when that currency isn't already
+  // GBP — the GBP conversion alongside it. Never lists every other currency.
+  const formatWithGbp = (val: number, valueCurrency: LedgerCurrency) => {
+    if (valueCurrency === 'GBP') return formatGbp(val, 'GBP');
+    const nativeText = `${currencyConfig[valueCurrency].symbol.trim()}${val.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+    return `${nativeText} (${formatGbp(val, valueCurrency)})`;
   };
 
   if (!request || !team) {
@@ -746,140 +758,70 @@ export const RequestDetailPage: React.FC<RequestDetailPageProps> = ({ requestId,
                 </div>
               )}
 
-              {/* Currency Selector & Rate Ribbon */}
-              <div className="p-3 rounded-xl bg-muted/40 border border-border/80 space-y-2.5">
-                <div className="flex items-center justify-between">
-                  <span className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground flex items-center gap-1">
-                    <Globe className="w-3.5 h-3.5 text-primary" />
-                    Currency View
-                  </span>
-                  {selectedCurrency !== nativeCurrency ? (
+              {/* GBP Conversion Rate — only shown when the request wasn't submitted in GBP */}
+              {!budgetIsGbpNative && (
+                <div className="p-3 rounded-xl bg-muted/40 border border-border/80 space-y-2">
+                  <div className="flex items-center justify-between">
+                    <span className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground flex items-center gap-1">
+                      <Globe className="w-3.5 h-3.5 text-primary" />
+                      GBP Conversion
+                    </span>
                     <span className="text-[11px] font-mono font-bold text-primary bg-primary/10 border border-primary/20 px-2 py-0.5 rounded-md">
-                      1 {nativeCurrency} = {(effectiveRates[selectedCurrency] / effectiveRates[nativeCurrency]).toFixed(4)} {selectedCurrency}
+                      1 {nativeCurrency} = {(1 / (effectiveRates[nativeCurrency] || 1)).toFixed(4)} GBP
                     </span>
-                  ) : (
-                    <span className="text-[11px] font-mono text-emerald-600 dark:text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded-md font-medium">
-                      Native Currency ({currencyConfig[nativeCurrency].symbol.trim()} {nativeCurrency})
-                    </span>
-                  )}
-                </div>
+                  </div>
 
-                {/* Currency Switcher Buttons */}
-                <div className="grid grid-cols-4 gap-1.5 p-1 rounded-lg bg-background border border-border">
-                  {(['GBP', 'USD', 'EUR', 'AED'] as LedgerCurrency[]).map((cur) => {
-                    const isSel = selectedCurrency === cur;
-                    return (
+                  {/* Exchange Rate Status Indicator */}
+                  <div className="flex items-center justify-between text-[10px] text-muted-foreground px-0.5">
+                    <span className="flex items-center gap-1.5">
+                      <span className={`w-2 h-2 rounded-full ${effectiveRates.isDelivered ? 'bg-amber-500' : 'bg-emerald-500 animate-pulse'}`} />
+                      <span>{effectiveRates.isDelivered ? 'Locked Delivery FX Rate' : 'Live Real-Time Market Rate'}</span>
+                    </span>
+                    {hasDeliveredRates && (
                       <button
-                        key={cur}
                         type="button"
-                        onClick={() => setSelectedCurrency(cur)}
-                        className={`py-1.5 px-2 rounded-md text-xs font-bold transition-all flex flex-col items-center justify-center gap-0.5 ${
-                          isSel
-                            ? 'bg-primary text-primary-foreground shadow-sm scale-[1.02]'
-                            : 'text-muted-foreground hover:text-foreground hover:bg-muted'
-                        }`}
+                        onClick={() => setUseDeliveredRates(!useDeliveredRates)}
+                        className="underline hover:text-foreground text-[10px] font-medium"
                       >
-                        <span className="text-[10px] font-semibold">{currencyConfig[cur].symbol.trim()}</span>
-                        <span className="text-xs">{cur}</span>
+                        {useDeliveredRates ? 'Switch to Live Rates' : 'Switch to Delivery Rates'}
                       </button>
-                    );
-                  })}
-                </div>
+                    )}
+                  </div>
 
-                {/* Exchange Rate Status Indicator */}
-                <div className="flex items-center justify-between text-[10px] text-muted-foreground px-0.5">
-                  <span className="flex items-center gap-1.5">
-                    <span className={`w-2 h-2 rounded-full ${effectiveRates.isDelivered ? 'bg-amber-500' : 'bg-emerald-500 animate-pulse'}`} />
-                    <span>{effectiveRates.isDelivered ? 'Locked Delivery FX Rate' : 'Live Real-Time Market Rate'}</span>
-                  </span>
-                  {hasDeliveredRates && (
-                    <button
-                      type="button"
-                      onClick={() => setUseDeliveredRates(!useDeliveredRates)}
-                      className="underline hover:text-foreground text-[10px] font-medium"
-                    >
-                      {useDeliveredRates ? 'Switch to Live Rates' : 'Switch to Delivery Rates'}
-                    </button>
-                  )}
+                  {/* Rate provenance: proves this is a real fetched/saved rate, not a guess */}
+                  <div className="text-[9px] text-muted-foreground/80 px-0.5">
+                    Source: open.er-api.com{effectiveRates.timestamp && (
+                      <> · {effectiveRates.isDelivered ? 'saved' : 'fetched'} {new Date(effectiveRates.timestamp).toLocaleString()}</>
+                    )}
+                  </div>
                 </div>
-
-                {/* Rate provenance: proves this is a real fetched/saved rate, not a guess */}
-                <div className="text-[9px] text-muted-foreground/80 px-0.5">
-                  Source: open.er-api.com{effectiveRates.timestamp && (
-                    <> · {effectiveRates.isDelivered ? 'saved' : 'fetched'} {new Date(effectiveRates.timestamp).toLocaleString()}</>
-                  )}
-                </div>
-              </div>
+              )}
 
               {/* Financial Snapshot Numbers */}
               <div className="space-y-3 font-mono text-xs">
                 <div className="flex items-center justify-between pb-2 border-b border-border/80">
                   <span className="text-muted-foreground font-sans">Original / Retail Value:</span>
                   <span className="font-semibold text-foreground">
-                    {formatAmount(request.requestValue || request.budgetAmount || 0)}
+                    {formatWithGbp(request.requestValue || request.budgetAmount || 0, nativeCurrency)}
                   </span>
                 </div>
                 <div className="flex items-center justify-between pb-2 border-b border-border/80">
                   <span className="text-muted-foreground font-sans font-bold">Total Budget Charged:</span>
                   <span className="font-bold text-sm text-primary">
-                    {formatAmount(request.budgetAmount || 0)}
+                    {formatWithGbp(request.budgetAmount || 0, budgetValueCurrency)}
                   </span>
                 </div>
                 <div className="flex items-center justify-between pb-2 border-b border-border/80">
                   <span className="text-muted-foreground font-sans">Current Team Remaining:</span>
                   <span className="font-semibold text-foreground">
-                    {formatAmount(team.remainingBudget || 0)}
+                    {formatGbp(team.remainingBudget || 0)}
                   </span>
                 </div>
                 <div className="flex items-center justify-between pt-1">
                   <span className="text-muted-foreground font-sans font-bold">Projected After Approval:</span>
                   <span className={`font-bold text-sm ${hasSufficientBudget ? 'text-foreground' : 'text-rose-600 dark:text-rose-400'}`}>
-                    {formatAmount((team.remainingBudget || 0) - (request.status === 'approved' ? 0 : (request.budgetAmount || 0)))}
+                    {formatGbp((team.remainingBudget || 0) - (request.status === 'approved' ? 0 : (request.budgetAmount || 0) / (budgetValueCurrency === 'GBP' ? 1 : (effectiveRates[budgetValueCurrency] || 1))))}
                   </span>
-                </div>
-              </div>
-
-              {/* Multi-Currency Approved Budget Breakdown Grid */}
-              <div className="pt-3 border-t border-border/80 space-y-2">
-                <div className="flex items-center justify-between">
-                  <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground flex items-center gap-1">
-                    <Coins className="w-3 h-3 text-primary" />
-                    Approved Budget in All Currencies
-                  </span>
-                  <span className="text-[9px] text-muted-foreground">
-                    Click to switch view
-                  </span>
-                </div>
-
-                <div className="grid grid-cols-2 gap-2">
-                  {(['GBP', 'USD', 'EUR', 'AED'] as LedgerCurrency[]).map((cur) => {
-                    const isSel = selectedCurrency === cur;
-                    const rate = effectiveRates[cur];
-                    return (
-                      <button
-                        key={cur}
-                        type="button"
-                        onClick={() => setSelectedCurrency(cur)}
-                        className={`p-2 rounded-lg border text-left transition-all ${
-                          isSel
-                            ? 'bg-primary/10 border-primary shadow-sm ring-1 ring-primary/40'
-                            : 'bg-muted/40 border-border/60 hover:bg-muted/80'
-                        }`}
-                      >
-                        <div className="flex items-center justify-between text-[10px]">
-                          <span className="font-bold text-foreground">
-                            {currencyConfig[cur].symbol.trim()} {cur}
-                          </span>
-                          <span className="text-muted-foreground font-mono text-[9px]">
-                            {cur === nativeCurrency ? 'Native' : `@${(rate / effectiveRates[nativeCurrency]).toFixed(2)}`}
-                          </span>
-                        </div>
-                        <div className="text-xs font-bold font-mono text-primary mt-1">
-                          {formatAmount(request.budgetAmount || 0, cur)}
-                        </div>
-                      </button>
-                    );
-                  })}
                 </div>
               </div>
 
@@ -891,7 +833,7 @@ export const RequestDetailPage: React.FC<RequestDetailPageProps> = ({ requestId,
                     <span>Insufficient Budget Alert</span>
                   </div>
                   <p className="text-[11px] leading-relaxed">
-                    This team only has {formatAmount(team.remainingBudget || 0)} left. Standard approval is blocked unless authorized by Super Admin or President override.
+                    This team only has {formatGbp(team.remainingBudget || 0)} left. Standard approval is blocked unless authorized by Super Admin or President override.
                   </p>
                 </div>
               )}
@@ -903,7 +845,7 @@ export const RequestDetailPage: React.FC<RequestDetailPageProps> = ({ requestId,
                     <span>Budget Deducted Successfully</span>
                   </div>
                   <p className="text-[11px] leading-relaxed">
-                    {formatAmount(request.budgetAmount || 0)} has been charged to {team.name}'s fiscal ledger ({formatAmount(request.budgetAmount || 0, 'GBP')} GBP).
+                    {formatWithGbp(request.budgetAmount || 0, budgetValueCurrency)} has been charged to {team.name}'s fiscal ledger.
                   </p>
                 </div>
               )}

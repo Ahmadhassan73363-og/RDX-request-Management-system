@@ -12,17 +12,18 @@ export interface ExchangeRatesData {
   timestamp: string;
 }
 
-export type LedgerCurrencyCode = 'GBP' | 'USD' | 'EUR' | 'AED';
+export type LedgerCurrencyCode = 'GBP' | 'USD' | 'EUR' | 'AED' | 'CAD';
 
 // Normalizes whatever a request/company has stored as its currency (a proper
 // ISO code like 'USD', or a legacy symbol like '$' from older records) down to
-// one of the four codes the live FX rates are quoted for. Falls back to GBP —
-// the rates' own base — for anything unrecognized (e.g. CAD/AUD) so callers
-// always get a valid key into ExchangeRatesData.rates.
+// one of the codes the live FX rates are quoted for. Falls back to GBP — the
+// rates' own base — for anything unrecognized, so callers always get a valid
+// key into ExchangeRatesData.rates.
 export function normalizeLedgerCurrency(raw?: string): LedgerCurrencyCode {
   if (raw === 'USD' || raw === '$') return 'USD';
   if (raw === 'EUR' || raw === '€') return 'EUR';
   if (raw === 'AED' || raw === 'د.إ') return 'AED';
+  if (raw === 'CAD') return 'CAD';
   return 'GBP';
 }
 

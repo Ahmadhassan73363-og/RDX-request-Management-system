@@ -113,9 +113,10 @@ export const NewRequestModal: React.FC<NewRequestModalProps> = ({ isOpen, onClos
   const [category, setCategory] = useState<'Sample' | 'Gift'>('Sample');
   // 7. System Invoice no.
   const [systemInvoiceNo, setSystemInvoiceNo] = useState('');
-  // 8. Currency: follows the selected Issuing Company's default currency
+  // 8. Currency: defaults to the selected Issuing Company's currency, but is
+  // directly selectable — a request doesn't have to be in its company's currency.
   const selectedCompanyObj = companies.find(c => c.id === companyId);
-  const currency = selectedCompanyObj?.defaultCurrency || 'GBP';
+  const [currency, setCurrency] = useState<string>('GBP');
 
   // Department (kept for compatibility)
   const [department, setDepartment] = useState(currentUser.department || 'Commercial Sales');
@@ -149,11 +150,13 @@ export const NewRequestModal: React.FC<NewRequestModalProps> = ({ isOpen, onClos
     }
   }, [teamId]);
 
-  // When companyId changes, update ourCompanyName
+  // When companyId changes, update ourCompanyName and default the currency to
+  // that company's currency (the user can still override it afterwards).
   useEffect(() => {
     const co = companies.find(c => c.id === companyId);
     if (co) {
       setOurCompanyName(co.name);
+      setCurrency(co.defaultCurrency || 'GBP');
     }
   }, [companyId, companies]);
 
@@ -773,10 +776,18 @@ export const NewRequestModal: React.FC<NewRequestModalProps> = ({ isOpen, onClos
                   </span>
                 </div>
 
-                {/* Currency Badge: follows the Issuing Company's default currency */}
+                {/* Currency: defaults from the Issuing Company, directly selectable */}
                 <div className="flex items-center gap-1.5 px-3 py-1 rounded-lg bg-background border border-border shadow-2xs">
                   <span className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider">Currency:</span>
-                  <span className="text-xs font-bold text-foreground font-mono">{currencySymbol} {currency}</span>
+                  <select
+                    value={currency}
+                    onChange={(e) => setCurrency(e.target.value)}
+                    className="text-xs font-bold text-foreground font-mono bg-transparent focus:outline-none cursor-pointer"
+                  >
+                    {COMPANY_CURRENCIES.filter(c => c.value !== 'AUD').map(c => (
+                      <option key={c.value} value={c.value}>{c.symbol} {c.value}</option>
+                    ))}
+                  </select>
                 </div>
 
                 <Button
