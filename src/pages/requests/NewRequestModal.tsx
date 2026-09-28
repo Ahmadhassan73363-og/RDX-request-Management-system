@@ -113,11 +113,8 @@ export const NewRequestModal: React.FC<NewRequestModalProps> = ({ isOpen, onClos
   const [category, setCategory] = useState<'Sample' | 'Gift'>('Sample');
   // 7. System Invoice no.
   const [systemInvoiceNo, setSystemInvoiceNo] = useState('');
-  // 8. Currency: Selectable (GBP, USD, EUR, AED, CAD, AUD, etc.)
-  const [currency, setCurrency] = useState<string>(() => {
-    const firstCo = dataService.getCompanies().filter(c => c.active)[0];
-    return firstCo?.defaultCurrency || 'GBP';
-  });
+  // 8. Currency: Strictly British Pound (£ GBP) at generation time
+  const currency = 'GBP';
 
   // Department (kept for compatibility)
   const [department, setDepartment] = useState(currentUser.department || 'Commercial Sales');
@@ -151,12 +148,11 @@ export const NewRequestModal: React.FC<NewRequestModalProps> = ({ isOpen, onClos
     }
   }, [teamId]);
 
-  // When companyId changes, update ourCompanyName and default currency
+  // When companyId changes, update ourCompanyName
   useEffect(() => {
     const co = companies.find(c => c.id === companyId);
     if (co) {
       setOurCompanyName(co.name);
-      if (co.defaultCurrency) setCurrency(co.defaultCurrency);
     }
   }, [companyId, companies]);
 
@@ -780,22 +776,10 @@ export const NewRequestModal: React.FC<NewRequestModalProps> = ({ isOpen, onClos
                   </span>
                 </div>
 
-                {/* Direct Currency Dropdown */}
-                <div className="flex items-center gap-2">
-                  <label className="text-xs font-semibold text-muted-foreground whitespace-nowrap">
-                    Currency:
-                  </label>
-                  <select
-                    value={currency}
-                    onChange={(e) => setCurrency(e.target.value)}
-                    className="h-8 px-2.5 bg-background border border-input rounded-lg text-xs font-bold text-foreground focus:outline-none focus:ring-2 focus:ring-primary/30"
-                  >
-                    {COMPANY_CURRENCIES.map(curr => (
-                      <option key={curr.value} value={curr.value}>
-                        {curr.label}
-                      </option>
-                    ))}
-                  </select>
+                {/* Fixed Currency Badge: Always Pound (£) */}
+                <div className="flex items-center gap-1.5 px-3 py-1 rounded-lg bg-background border border-border shadow-2xs">
+                  <span className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider">Currency:</span>
+                  <span className="text-xs font-bold text-foreground font-mono">Pound (£ GBP)</span>
                 </div>
 
                 <Button
@@ -863,14 +847,14 @@ export const NewRequestModal: React.FC<NewRequestModalProps> = ({ isOpen, onClos
                           />
                         </div>
 
-                        {/* Cost per unit: label matches selected currency */}
+                        {/* Cost per unit: strictly in GBP (£) */}
                         <div>
                           <label className="block text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-1.5">
-                            Cost Per Unit ({currency}) *
+                            Cost Per Unit (£) *
                           </label>
                           <div className="relative">
                             <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground font-mono text-xs">
-                              {currencySymbol}
+                              £
                             </span>
                             <input
                               type="number"
@@ -885,14 +869,14 @@ export const NewRequestModal: React.FC<NewRequestModalProps> = ({ isOpen, onClos
                           </div>
                         </div>
 
-                        {/* Line total */}
+                        {/* Line total in GBP */}
                         <div>
                           <label className="block text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-1.5">
-                            Total ({currency})
+                            Total (£)
                           </label>
                           <div className="h-10 px-3 bg-muted/40 border border-border rounded-lg flex flex-col justify-center">
                             <span className="font-mono font-bold text-sm text-foreground leading-tight">
-                              {currencySymbol}{lineTotal.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                              £{lineTotal.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                             </span>
                           </div>
                         </div>
@@ -902,14 +886,14 @@ export const NewRequestModal: React.FC<NewRequestModalProps> = ({ isOpen, onClos
                 })}
               </div>
 
-              {/* Grand Total Banner */}
+              {/* Grand Total Banner (Pounds) */}
               <div className="p-3.5 rounded-xl bg-card border-2 border-primary/30 flex items-center justify-between shadow-xs">
                 <div>
                   <div className="text-[10px] font-bold uppercase text-muted-foreground tracking-wider mb-0.5">
-                    Grand Total ({currency})
+                    Grand Total (£ GBP)
                   </div>
                   <div className="text-xl font-extrabold font-mono text-primary">
-                    {currencySymbol}{grandSkuTotal.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                    £{grandSkuTotal.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                   </div>
                 </div>
                 <div className="text-xs text-muted-foreground text-right">

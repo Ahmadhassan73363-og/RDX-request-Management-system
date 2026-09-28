@@ -130,6 +130,10 @@ export const api = {
     return request('saveForm', '/api/forms', { method: 'POST', ...jsonBody(form) });
   },
 
+  deleteForm(formId: string) {
+    return request('deleteForm', `/api/forms/${formId}`, { method: 'DELETE' });
+  },
+
   saveFormAssignment(fa: any) {
     return request('saveFormAssignment', '/api/form-assignments', { method: 'POST', ...jsonBody(fa) });
   },

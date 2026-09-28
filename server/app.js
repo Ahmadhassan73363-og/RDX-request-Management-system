@@ -104,9 +104,10 @@ function mapTeam(row) {
     allocatedBudget: allocated,
     spentBudget: spent,
     remainingBudget: Math.max(0, allocated - spent),
-    active: row.is_active !== false,
+    // is_active column was added via migration — defaults to true for legacy rows
+    active: row.is_active !== false && row.is_active !== null ? true : (row.is_active === false ? false : true),
     memberCount: Array.isArray(row.member_ids) ? row.member_ids.length : (parseInt(row.member_count) || 0),
-    currency: row.currency || 'USD',
+    currency: row.currency || 'GBP',
     color: row.color || '#6366f1',
     createdAt: row.created_at
   };
@@ -229,6 +230,14 @@ function mapRequest(row) {
     date: row.date ? new Date(row.date).toISOString().split('T')[0] : (row.request_date ? new Date(row.request_date).toISOString().split('T')[0] : undefined),
     department: row.department || undefined,
     agentOrTeamName: row.agent_or_team_name || row.customer_name || undefined,
+    agentName: row.agent_name || undefined,
+    agentUserId: row.agent_user_id || undefined,
+    ourCompanyName: row.our_company_name || undefined,
+    category: row.category || undefined,
+    currency: row.currency || 'GBP',
+    gbpExchangeRate: row.gbp_exchange_rate != null ? parseFloat(row.gbp_exchange_rate) : undefined,
+    sampleSkuCostPerUnitGbp: row.sample_sku_cost_per_unit_gbp != null ? parseFloat(row.sample_sku_cost_per_unit_gbp) : undefined,
+    sampleSkuTotalGbp: row.sample_sku_total_gbp != null ? parseFloat(row.sample_sku_total_gbp) : undefined,
     businessName: row.business_name || row.customer_company || undefined,
     typeOfFoc: row.type_of_foc || row.request_category || undefined,
     systemInvoiceNo: row.system_invoice_no || undefined,
@@ -249,6 +258,8 @@ function mapRequest(row) {
     // pipeline — treat it as "no shipment status" instead of a real active state.
     shipmentStatus: (row.shipment_status && row.shipment_status !== 'pending') ? row.shipment_status : undefined,
     deliveredAt: row.delivered_at || undefined,
+    // FX rates captured at time of delivery/dispatch (persisted as JSONB)
+    deliveredCurrencyRates: row.delivered_currency_rates || undefined,
     createdAt: row.created_at,
     updatedAt: row.updated_at
   };
@@ -530,7 +541,19 @@ app.put('/api/users/:id', async (req, res) => {
 
 app.delete('/api/users/:id', async (req, res) => {
   try {
-    await pool.query('DELETE FROM users WHERE id = $1', [req.params.id]);
+    const { id } = req.params;
+    // Prevent deleting the last Super Admin — would lock everyone out
+    const targetUser = await pool.query('SELECT role_name FROM users WHERE id = $1', [id]);
+    if (!targetUser.rows.length) {
+      return res.status(404).json({ error: 'User not found.' });
+    }
+    if (targetUser.rows[0].role_name === 'Super Admin') {
+      const adminCount = await pool.query("SELECT COUNT(*) FROM users WHERE role_name = 'Super Admin'");
+      if (Number(adminCount.rows[0].count) <= 1) {
+        return res.status(409).json({ error: 'Cannot delete the last Super Admin account. Assign another Super Admin first.' });
+      }
+    }
+    await pool.query('DELETE FROM users WHERE id = $1', [id]);
     res.json({ success: true });
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -807,8 +830,8 @@ app.post('/api/teams', async (req, res) => {
   const allocated = t.allocatedBudget !== undefined ? t.allocatedBudget : (t.totalAllocatedBudget !== undefined ? t.totalAllocatedBudget : 0);
   try {
     const result = await pool.query(
-      `INSERT INTO teams (id, name, description, department, lead_id, member_ids, total_allocated_budget, spent_budget, fiscal_year, color, created_at)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+      `INSERT INTO teams (id, name, description, department, lead_id, member_ids, total_allocated_budget, spent_budget, fiscal_year, color, is_active, currency, code, created_at)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
        ON CONFLICT (id) DO UPDATE SET
          name = COALESCE(EXCLUDED.name, teams.name),
          description = COALESCE(EXCLUDED.description, teams.description),
@@ -817,7 +840,10 @@ app.post('/api/teams', async (req, res) => {
          member_ids = COALESCE(EXCLUDED.member_ids, teams.member_ids),
          total_allocated_budget = COALESCE(EXCLUDED.total_allocated_budget, teams.total_allocated_budget),
          spent_budget = COALESCE(EXCLUDED.spent_budget, teams.spent_budget),
-         color = COALESCE(EXCLUDED.color, teams.color)
+         color = COALESCE(EXCLUDED.color, teams.color),
+         is_active = COALESCE(EXCLUDED.is_active, teams.is_active),
+         currency = COALESCE(EXCLUDED.currency, teams.currency),
+         code = COALESCE(EXCLUDED.code, teams.code)
        RETURNING *`,
       [
         t.id || `team-${Date.now()}`,
@@ -830,6 +856,9 @@ app.post('/api/teams', async (req, res) => {
         t.spentBudget || 0,
         t.fiscalYear || '2026',
         t.color || '#3b82f6',
+        t.active !== undefined ? Boolean(t.active) : true,
+        t.currency || 'GBP',
+        t.code || null,
         t.createdAt || new Date().toISOString()
       ]
     );
@@ -844,6 +873,8 @@ app.put('/api/teams/:id', async (req, res) => {
   const t = req.body;
   const allocated = t.allocatedBudget !== undefined ? parseFloat(t.allocatedBudget) : (t.totalAllocatedBudget !== undefined ? parseFloat(t.totalAllocatedBudget) : null);
   const spent = t.spentBudget !== undefined && t.spentBudget !== null ? parseFloat(t.spentBudget) : null;
+  // is_active: explicitly passed (including false) to support soft-deactivation
+  const isActive = t.active !== undefined ? Boolean(t.active) : null;
   try {
     let result = await pool.query(
       `UPDATE teams SET
@@ -855,7 +886,10 @@ app.put('/api/teams/:id', async (req, res) => {
          total_allocated_budget = COALESCE($7, total_allocated_budget),
          spent_budget = COALESCE($8, spent_budget),
          fiscal_year = COALESCE($9, fiscal_year),
-         color = COALESCE($10, color)
+         color = COALESCE($10, color),
+         is_active = CASE WHEN $11::boolean IS NOT NULL THEN $11::boolean ELSE is_active END,
+         currency = COALESCE($12, currency),
+         code = COALESCE($13, code)
        WHERE id = $1
        RETURNING *`,
       [
@@ -868,14 +902,17 @@ app.put('/api/teams/:id', async (req, res) => {
         allocated,
         spent,
         t.fiscalYear ?? null,
-        t.color ?? null
+        t.color ?? null,
+        isActive,
+        t.currency ?? null,
+        t.code ?? null
       ]
     );
 
     if (!result.rows.length) {
       result = await pool.query(
-        `INSERT INTO teams (id, name, description, department, lead_id, member_ids, total_allocated_budget, spent_budget, fiscal_year, color, created_at)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+        `INSERT INTO teams (id, name, description, department, lead_id, member_ids, total_allocated_budget, spent_budget, fiscal_year, color, is_active, currency, code, created_at)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
          RETURNING *`,
         [
           id,
@@ -888,6 +925,9 @@ app.put('/api/teams/:id', async (req, res) => {
           spent !== null ? spent : 0,
           t.fiscalYear || '2026',
           t.color || '#3b82f6',
+          isActive !== null ? isActive : true,
+          t.currency || 'GBP',
+          t.code || null,
           t.createdAt || new Date().toISOString()
         ]
       );
@@ -898,8 +938,21 @@ app.put('/api/teams/:id', async (req, res) => {
   }
 });
 
+// DELETE /api/teams/:id — Server-side dependency guard:
+// requests.team_id has ON DELETE SET NULL in the schema which would silently
+// orphan budget references. We block hard-deletes if any requests are linked.
 app.delete('/api/teams/:id', async (req, res) => {
   try {
+    const deps = await pool.query(
+      'SELECT COUNT(*) FROM requests WHERE team_id = $1',
+      [req.params.id]
+    );
+    const count = Number(deps.rows[0].count);
+    if (count > 0) {
+      return res.status(409).json({
+        error: `Cannot delete: ${count} request(s) are linked to this team. Deactivate the team instead to preserve historical records and budget audit trails.`
+      });
+    }
     await pool.query('DELETE FROM teams WHERE id = $1', [req.params.id]);
     res.json({ success: true });
   } catch (err) {
@@ -984,13 +1037,16 @@ app.post('/api/requests', async (req, res) => {
          sample_sku, sample_sku_qty, sample_sku_cost_per_unit, sample_sku_total,
          sku_items, shipment_status, custom_fields, form_id, form_title, delivered_at,
          company_id, company_name, warehouse_id, warehouse_name, customer_id,
-         created_at, updated_at
+         agent_name, agent_user_id, our_company_name, category, currency,
+         gbp_exchange_rate, sample_sku_cost_per_unit_gbp, sample_sku_total_gbp,
+         delivered_currency_rates, created_at, updated_at
        ) VALUES (
          $1, $2, $3, $4, $5, $6, $7, $8, $9, $10,
          $11, $12, $13, $14, $15, $16, $17, $18, $19, $20,
          $21, $22, $23, $24, $25, $26, $27, $28, $29, $30,
          $31, $32, $33, $34, $35, $36, $37, $38, $39, $40,
-         $41, $42, $43, $44, $45, $46, $47, $48, $49, $50, $51
+         $41, $42, $43, $44, $45, $46, $47, $48, $49,
+         $50, $51, $52, $53, $54, $55, $56, $57, $58, $59, $60
        )
        ON CONFLICT (id) DO UPDATE SET
          customer_name = COALESCE(EXCLUDED.customer_name, requests.customer_name),
@@ -1018,6 +1074,15 @@ app.post('/api/requests', async (req, res) => {
          warehouse_id = COALESCE(EXCLUDED.warehouse_id, requests.warehouse_id),
          warehouse_name = COALESCE(EXCLUDED.warehouse_name, requests.warehouse_name),
          customer_id = COALESCE(EXCLUDED.customer_id, requests.customer_id),
+         agent_name = COALESCE(EXCLUDED.agent_name, requests.agent_name),
+         agent_user_id = COALESCE(EXCLUDED.agent_user_id, requests.agent_user_id),
+         our_company_name = COALESCE(EXCLUDED.our_company_name, requests.our_company_name),
+         category = COALESCE(EXCLUDED.category, requests.category),
+         currency = COALESCE(EXCLUDED.currency, requests.currency),
+         gbp_exchange_rate = COALESCE(EXCLUDED.gbp_exchange_rate, requests.gbp_exchange_rate),
+         sample_sku_cost_per_unit_gbp = COALESCE(EXCLUDED.sample_sku_cost_per_unit_gbp, requests.sample_sku_cost_per_unit_gbp),
+         sample_sku_total_gbp = COALESCE(EXCLUDED.sample_sku_total_gbp, requests.sample_sku_total_gbp),
+         delivered_currency_rates = COALESCE(EXCLUDED.delivered_currency_rates, requests.delivered_currency_rates),
          updated_at = CURRENT_TIMESTAMP
        RETURNING *`,
       [
@@ -1070,6 +1135,15 @@ app.post('/api/requests', async (req, res) => {
         warehouseId,
         reqData.warehouseName || null,
         customerId,
+        reqData.agentName || reqData.agentOrTeamName || null,
+        reqData.agentUserId || null,
+        reqData.ourCompanyName || null,
+        reqData.category || null,
+        reqData.currency || 'GBP',
+        reqData.gbpExchangeRate != null ? parseFloat(reqData.gbpExchangeRate) : null,
+        reqData.sampleSkuCostPerUnitGbp != null ? parseFloat(reqData.sampleSkuCostPerUnitGbp) : null,
+        reqData.sampleSkuTotalGbp != null ? parseFloat(reqData.sampleSkuTotalGbp) : null,
+        reqData.deliveredCurrencyRates ? JSON.stringify(reqData.deliveredCurrencyRates) : null,
         reqData.createdAt || new Date().toISOString(),
         reqData.updatedAt || new Date().toISOString()
       ]
@@ -1146,8 +1220,19 @@ app.put('/api/requests/:id', async (req, res) => {
          warehouse_id = COALESCE($38, warehouse_id),
          warehouse_name = COALESCE($39, warehouse_name),
          customer_id = COALESCE($40, customer_id),
+         team_id = COALESCE($41, team_id),
+         team_name = COALESCE($42, team_name),
+         agent_name = COALESCE($43, agent_name),
+         agent_user_id = COALESCE($44, agent_user_id),
+         our_company_name = COALESCE($45, our_company_name),
+         category = COALESCE($46, category),
+         currency = COALESCE($47, currency),
+         gbp_exchange_rate = COALESCE($48, gbp_exchange_rate),
+         sample_sku_cost_per_unit_gbp = COALESCE($49, sample_sku_cost_per_unit_gbp),
+         sample_sku_total_gbp = COALESCE($50, sample_sku_total_gbp),
+         delivered_currency_rates = COALESCE($51, delivered_currency_rates),
          updated_at = CURRENT_TIMESTAMP
-       WHERE id = $41
+       WHERE id = $52
        RETURNING *`,
       [
         r.customerName ?? null,
@@ -1190,6 +1275,17 @@ app.put('/api/requests/:id', async (req, res) => {
         warehouseId,
         r.warehouseName ?? null,
         customerId,
+        r.teamId || null,
+        r.teamName || null,
+        r.agentName || null,
+        r.agentUserId || null,
+        r.ourCompanyName || null,
+        r.category || null,
+        r.currency || null,
+        r.gbpExchangeRate != null ? parseFloat(r.gbpExchangeRate) : null,
+        r.sampleSkuCostPerUnitGbp != null ? parseFloat(r.sampleSkuCostPerUnitGbp) : null,
+        r.sampleSkuTotalGbp != null ? parseFloat(r.sampleSkuTotalGbp) : null,
+        r.deliveredCurrencyRates ? JSON.stringify(r.deliveredCurrencyRates) : null,
         id
       ]
     );
@@ -1328,13 +1424,16 @@ app.post('/api/budget-transactions', async (req, res) => {
       ? (await pool.query('SELECT id FROM users WHERE id = $1', [b.performedByUserId])).rows[0]?.id || null
       : null;
 
+    // Use a high-entropy ID to prevent silent collision drops (ON CONFLICT DO NOTHING)
+    // when concurrent approvals happen within the same millisecond.
+    const txnId = b.id || `txn-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
     const result = await pool.query(
       `INSERT INTO budget_transactions (id, team_id, team_name, type, amount, balance_before, balance_after, reason, request_id, performed_by_user_id, performed_by_user_name, is_override, created_at)
        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
-       ON CONFLICT (id) DO NOTHING
+       ON CONFLICT (id) DO UPDATE SET created_at = EXCLUDED.created_at
        RETURNING *`,
       [
-        b.id || `txn-${Date.now()}`,
+        txnId,
         teamId,
         b.teamName || '',
         b.type,
@@ -1451,6 +1550,19 @@ app.get('/api/form-assignments', async (req, res) => {
     res.status(500).json({ error: err.message });
   }
 });
+
+// DELETE /api/forms/:id — was previously missing; form deletions were only local
+app.delete('/api/forms/:id', async (req, res) => {
+  try {
+    // Cascade is defined on form_assignments and form_submissions via FK ON DELETE CASCADE
+    await pool.query('DELETE FROM forms WHERE id = $1', [req.params.id]);
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+
 
 app.post('/api/form-assignments', async (req, res) => {
   const fa = req.body;

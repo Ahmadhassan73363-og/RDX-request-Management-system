@@ -95,6 +95,17 @@ export interface RequestRecord {
   sampleSkuTotalGbp?: number;
   gbpExchangeRate?: number;   // Rate used for GBP conversion
 
+  // Real-time Forex Rates captured at shipment processing / delivery
+  deliveredCurrencyRates?: {
+    fetchedAt: string;
+    usdRate: number;
+    eurRate: number;
+    aedRate: number;
+    totalUsd: number;
+    totalEur: number;
+    totalAed: number;
+  };
+
   // Multiple SKU Breakdown
   skuItems?: SkuItem[];
 

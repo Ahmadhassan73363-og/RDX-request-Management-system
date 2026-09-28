@@ -9,14 +9,13 @@ export async function ensureSchema() {
 
   initPromise = (async () => {
     try {
-      // Fast path: if schema is already created, skip heavy DDL to prevent lock contention across serverless lambdas
+      // Fast path: if schema is already created, skip heavy CREATE TABLE DDL to
+      // prevent lock contention across serverless lambdas — but ALWAYS run
+      // the ALTER TABLE migrations so new columns are applied on existing DBs.
       const check = await pool.query("SELECT to_regclass('public.requests') AS tbl").catch(() => null);
-      if (check?.rows?.[0]?.tbl) {
-        initialized = true;
-        return;
-      }
+      const tablesExist = Boolean(check?.rows?.[0]?.tbl);
 
-      // 1. Create tables if they do not exist
+      if (!tablesExist) {
       await pool.query(`
         CREATE TABLE IF NOT EXISTS roles (
           id VARCHAR(50) PRIMARY KEY,
@@ -260,8 +259,9 @@ export async function ensureSchema() {
           created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
         );
       `);
+      } // end if (!tablesExist) — CREATE TABLE block only
 
-      // 2. Safe additive column migrations for existing databases
+
       await pool.query(`
         ALTER TABLE requests ADD COLUMN IF NOT EXISTS form_id VARCHAR(50);
         ALTER TABLE requests ADD COLUMN IF NOT EXISTS form_title VARCHAR(200);
@@ -277,6 +277,29 @@ export async function ensureSchema() {
         ALTER TABLE companies ADD COLUMN IF NOT EXISTS company_id_number VARCHAR(100);
         ALTER TABLE companies ADD COLUMN IF NOT EXISTS legal_id VARCHAR(100);
         ALTER TABLE companies ADD COLUMN IF NOT EXISTS location VARCHAR(200);
+      `);
+
+      // 2b. Feature migrations — new columns added for FX rates, team soft-deactivation,
+      //     and additional FOC request fields. Each is additive (IF NOT EXISTS) so safe to run
+      //     against existing production databases without data loss.
+      await pool.query(`
+        -- Team soft-deactivation (toggleTeamActive feature)
+        ALTER TABLE teams ADD COLUMN IF NOT EXISTS is_active BOOLEAN DEFAULT true;
+        ALTER TABLE teams ADD COLUMN IF NOT EXISTS currency VARCHAR(20) DEFAULT 'GBP';
+        ALTER TABLE teams ADD COLUMN IF NOT EXISTS code VARCHAR(20);
+
+        -- Live FX rates captured at shipment delivery / dispatch
+        ALTER TABLE requests ADD COLUMN IF NOT EXISTS delivered_currency_rates JSONB DEFAULT NULL;
+
+        -- FOC / Sample request extended fields (agent, company, category, currency)
+        ALTER TABLE requests ADD COLUMN IF NOT EXISTS agent_name VARCHAR(150);
+        ALTER TABLE requests ADD COLUMN IF NOT EXISTS agent_user_id VARCHAR(50);
+        ALTER TABLE requests ADD COLUMN IF NOT EXISTS our_company_name VARCHAR(150);
+        ALTER TABLE requests ADD COLUMN IF NOT EXISTS category VARCHAR(50);
+        ALTER TABLE requests ADD COLUMN IF NOT EXISTS currency VARCHAR(20) DEFAULT 'GBP';
+        ALTER TABLE requests ADD COLUMN IF NOT EXISTS gbp_exchange_rate NUMERIC(10, 6) DEFAULT NULL;
+        ALTER TABLE requests ADD COLUMN IF NOT EXISTS sample_sku_cost_per_unit_gbp NUMERIC(15, 2) DEFAULT NULL;
+        ALTER TABLE requests ADD COLUMN IF NOT EXISTS sample_sku_total_gbp NUMERIC(15, 2) DEFAULT NULL;
       `);
 
       // 3. Ensure global settings row exists with budget rules

@@ -31,6 +31,7 @@ export const TeamsListPage: React.FC<TeamsListPageProps> = ({ onNavigateToBudget
   const [leadId, setLeadId] = useState(users[0]?.id || '');
   const [allocatedBudget, setAllocatedBudget] = useState<number | ''>(25000);
   const [teamColor, setTeamColor] = useState('#3b82f6');
+  const [teamActive, setTeamActive] = useState(true);
   const [error, setError] = useState('');
 
   const canManageTeams = hasPermission('settings:teams') || hasPermission('users:create') || currentUser.roleName === 'Super Admin';
@@ -55,6 +56,26 @@ export const TeamsListPage: React.FC<TeamsListPageProps> = ({ onNavigateToBudget
     }
   };
 
+  const handleDeactivateFromModal = () => {
+    if (!teamToDelete) return;
+    try {
+      dataService.toggleTeamActive(teamToDelete.id, currentUser, false);
+      setTeamToDelete(null);
+      refreshTeams();
+    } catch (err: any) {
+      setDeleteError(err.message || 'Error deactivating team');
+    }
+  };
+
+  const handleToggleActive = (team: Team) => {
+    try {
+      dataService.toggleTeamActive(team.id, currentUser);
+      refreshTeams();
+    } catch (err: any) {
+      alert(err.message || 'Error toggling team status');
+    }
+  };
+
   const handleOpenAdd = () => {
     setEditingTeam(null);
     setTeamName('');
@@ -64,6 +85,7 @@ export const TeamsListPage: React.FC<TeamsListPageProps> = ({ onNavigateToBudget
     setLeadId(users[0]?.id || '');
     setAllocatedBudget(25000);
     setTeamColor('#3b82f6');
+    setTeamActive(true);
     setError('');
     setIsModalOpen(true);
   };
@@ -77,6 +99,7 @@ export const TeamsListPage: React.FC<TeamsListPageProps> = ({ onNavigateToBudget
     setLeadId(team.leadId);
     setAllocatedBudget(team.allocatedBudget);
     setTeamColor(team.color || '#3b82f6');
+    setTeamActive(team.active !== false);
     setError('');
     setIsModalOpen(true);
   };
@@ -104,7 +127,8 @@ export const TeamsListPage: React.FC<TeamsListPageProps> = ({ onNavigateToBudget
           leadName: leadUser?.name || 'Assigned Lead',
           leadEmail: leadUser?.email,
           allocatedBudget: Number(allocatedBudget) || 0,
-          color: teamColor
+          color: teamColor,
+          active: teamActive
         },
         currentUser
       );
@@ -235,15 +259,32 @@ export const TeamsListPage: React.FC<TeamsListPageProps> = ({ onNavigateToBudget
               </div>
 
               <div className="p-3 bg-muted/20 border-t border-border/60 flex items-center justify-between text-xs px-5">
-                <span className="flex items-center gap-1.5 text-[11px] text-emerald-600 dark:text-emerald-400 font-medium">
-                  <CheckCircle2 className="w-3.5 h-3.5" /> Active Team
-                </span>
-                <button
-                  onClick={onNavigateToBudgets}
-                  className="text-primary hover:underline text-[11px] font-semibold flex items-center gap-1"
-                >
-                  Adjust Allocation <ArrowRight className="w-3 h-3" />
-                </button>
+                {team.active !== false ? (
+                  <span className="flex items-center gap-1.5 text-[11px] text-emerald-600 dark:text-emerald-400 font-medium">
+                    <CheckCircle2 className="w-3.5 h-3.5" /> Active Team
+                  </span>
+                ) : (
+                  <span className="flex items-center gap-1.5 text-[11px] text-amber-600 dark:text-amber-400 font-medium">
+                    <AlertTriangle className="w-3.5 h-3.5" /> Deactivated
+                  </span>
+                )}
+                <div className="flex items-center gap-3">
+                  {canManageTeams && (
+                    <button
+                      onClick={() => handleToggleActive(team)}
+                      className="text-xs text-muted-foreground hover:text-foreground underline decoration-dotted transition-colors"
+                      title={team.active !== false ? "Deactivate team from new requests" : "Reactivate team for new requests"}
+                    >
+                      {team.active !== false ? 'Deactivate' : 'Reactivate'}
+                    </button>
+                  )}
+                  <button
+                    onClick={onNavigateToBudgets}
+                    className="text-primary hover:underline text-[11px] font-semibold flex items-center gap-1"
+                  >
+                    Adjust Allocation <ArrowRight className="w-3 h-3" />
+                  </button>
+                </div>
               </div>
             </Card>
           );
@@ -325,6 +366,29 @@ export const TeamsListPage: React.FC<TeamsListPageProps> = ({ onNavigateToBudget
             </p>
           </div>
 
+          {/* Account Active Status Toggle */}
+          {editingTeam && (
+            <div className="p-3 rounded-lg border border-border bg-muted/20 flex items-center justify-between">
+              <div>
+                <p className="text-xs font-semibold text-foreground">Team Account Status</p>
+                <p className="text-[11px] text-muted-foreground">
+                  {teamActive ? 'Active — selectable for all new requests' : 'Deactivated — hidden from new requests'}
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setTeamActive(!teamActive)}
+                className={`px-3 py-1 text-xs font-bold rounded-lg border transition-colors ${
+                  teamActive
+                    ? 'bg-emerald-500/15 border-emerald-500/30 text-emerald-600 dark:text-emerald-400'
+                    : 'bg-muted border-border text-muted-foreground'
+                }`}
+              >
+                {teamActive ? 'Active' : 'Deactivated'}
+              </button>
+            </div>
+          )}
+
           <Select
             label="Team Lead *"
             value={leadId}
@@ -370,7 +434,7 @@ export const TeamsListPage: React.FC<TeamsListPageProps> = ({ onNavigateToBudget
         isOpen={!!teamToDelete}
         onClose={() => setTeamToDelete(null)}
         title="Delete Team Confirmation"
-        description="Permanently remove team from organization"
+        description="Permanently remove team or safely deactivate account"
         maxWidth="sm"
       >
         <div className="space-y-4">
@@ -380,37 +444,86 @@ export const TeamsListPage: React.FC<TeamsListPageProps> = ({ onNavigateToBudget
             </div>
           )}
 
-          <div className="p-3.5 rounded-xl bg-destructive/10 border border-destructive/20 flex items-start gap-3">
-            <AlertTriangle className="w-5 h-5 text-destructive shrink-0 mt-0.5" />
-            <div className="text-xs space-y-1">
-              <p className="font-bold text-foreground">
-                Are you sure you want to delete <span className="text-destructive font-mono">{teamToDelete?.name}</span>?
-              </p>
-              <p className="text-muted-foreground leading-relaxed">
-                This action will delete the team envelope and disassociate any assigned staff members. Historical audit records will be preserved.
-              </p>
-            </div>
-          </div>
+          {(() => {
+            const linkedCount = teamToDelete
+              ? dataService.getRequests().filter(r => r.teamId === teamToDelete.id).length
+              : 0;
 
-          <div className="flex items-center justify-end gap-2.5 pt-3 border-t border-border">
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              onClick={() => setTeamToDelete(null)}
-            >
-              Cancel
-            </Button>
-            <Button
-              type="button"
-              variant="destructive"
-              size="sm"
-              onClick={handleConfirmDelete}
-              leftIcon={<Trash2 className="w-4 h-4" />}
-            >
-              Confirm Delete
-            </Button>
-          </div>
+            if (linkedCount > 0) {
+              return (
+                <div className="space-y-3">
+                  <div className="p-3.5 rounded-xl bg-amber-500/10 border border-amber-500/20 text-amber-800 dark:text-amber-400 flex items-start gap-3">
+                    <AlertTriangle className="w-5 h-5 shrink-0 mt-0.5 text-amber-600" />
+                    <div className="text-xs space-y-1.5">
+                      <p className="font-bold text-foreground">Cannot Hard Delete Linked Team</p>
+                      <p className="text-muted-foreground leading-relaxed">
+                        <strong className="text-foreground">{teamToDelete?.name}</strong> is linked to <strong className="text-foreground">{linkedCount} existing request(s)</strong>.
+                        Hard deleting it would orphan historical orders and break audit trails.
+                      </p>
+                      <p className="text-foreground font-semibold pt-1">
+                        Recommended: Deactivate this team account instead. It will be immediately archived from new request dropdowns while keeping past history 100% intact.
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center justify-end gap-2.5 pt-3 border-t border-border">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setTeamToDelete(null)}
+                    >
+                      Cancel
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="primary"
+                      size="sm"
+                      onClick={handleDeactivateFromModal}
+                    >
+                      Deactivate Team Instead
+                    </Button>
+                  </div>
+                </div>
+              );
+            }
+
+            return (
+              <div className="space-y-4">
+                <div className="p-3.5 rounded-xl bg-destructive/10 border border-destructive/20 flex items-start gap-3">
+                  <AlertTriangle className="w-5 h-5 text-destructive shrink-0 mt-0.5" />
+                  <div className="text-xs space-y-1">
+                    <p className="font-bold text-foreground">
+                      Are you sure you want to delete <span className="text-destructive font-mono">{teamToDelete?.name}</span>?
+                    </p>
+                    <p className="text-muted-foreground leading-relaxed">
+                      This action will delete the team envelope and disassociate any assigned staff members.
+                    </p>
+                  </div>
+                </div>
+
+                <div className="flex items-center justify-end gap-2.5 pt-3 border-t border-border">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setTeamToDelete(null)}
+                  >
+                    Cancel
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="destructive"
+                    size="sm"
+                    onClick={handleConfirmDelete}
+                    leftIcon={<Trash2 className="w-4 h-4" />}
+                  >
+                    Confirm Delete
+                  </Button>
+                </div>
+              </div>
+            );
+          })()}
         </div>
       </Modal>
     </div>

@@ -133,7 +133,10 @@ const AppContent: React.FC = () => {
         isOpen={isGlobalNewRequestModalOpen}
         onClose={() => setIsGlobalNewRequestModalOpen(false)}
         onSuccess={(id) => {
-          handleNavigate(`/requests?id=${id}`);
+          // Defer navigation to the next tick so modal's own state cleanup
+          // finishes first — prevents React's "Cannot update AppContent while
+          // rendering NewRequestModal" warning in strict mode.
+          setTimeout(() => handleNavigate(`/requests?id=${id}`), 0);
         }}
       />
     </Layout>

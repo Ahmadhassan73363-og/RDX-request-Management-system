@@ -23,6 +23,7 @@ import { Warehouse } from '../types/warehouse';
 import { Customer } from '../types/customer';
 import { RequestRecord, RequestStatus, RequestPriority, SkuItem, ShipmentStatus, AdditionalField } from '../types/request';
 import { FormSchema, FormAssignment, FormSubmission } from '../types/form';
+import { currencyService } from './currencyService';
 import { BudgetTransaction, BudgetActionType } from '../types/budget';
 import { Notification, NotificationType } from '../types/notification';
 import { AuditLog, AuditActionType } from '../types/audit';
@@ -744,7 +745,7 @@ class DataService {
     // instead of failing loudly. Block it here instead.
     const dependentRequests = this.getRequests().filter(r => r.teamId === teamId);
     if (dependentRequests.length > 0) {
-      throw new Error(`Cannot delete ${team.name}: ${dependentRequests.length} request(s) are still linked to this team. Reassign or resolve them first.`);
+      throw new Error(`Cannot delete "${team.name}" because ${dependentRequests.length} request(s) are linked to it. Please deactivate the team instead to preserve historical records.`);
     }
 
     teams = teams.filter(t => t.id !== teamId);
@@ -761,6 +762,36 @@ class DataService {
     storage.set('users', users);
 
     this.logAudit('TEAM_DELETE', 'Team', teamId, `Deleted team ${team.name} (${team.code})`, actor);
+  }
+
+  public toggleTeamActive(teamId: string, actor: User, active?: boolean): Team {
+    const teams = this.getTeams();
+    const idx = teams.findIndex(t => t.id === teamId);
+    if (idx === -1) throw new Error('Team not found');
+
+    const currentTeam = teams[idx];
+    const newActive = active !== undefined ? active : !currentTeam.active;
+
+    const updatedTeam: Team = {
+      ...currentTeam,
+      active: newActive
+    };
+
+    teams[idx] = updatedTeam;
+    storage.set('teams', teams);
+    api.saveTeam(updatedTeam).catch(() => {});
+
+    this.logAudit(
+      newActive ? 'TEAM_ACTIVATE' : 'TEAM_DEACTIVATE',
+      'Team',
+      teamId,
+      `${newActive ? 'Reactivated' : 'Deactivated'} team ${updatedTeam.name} (${updatedTeam.code})`,
+      actor,
+      JSON.stringify(currentTeam),
+      JSON.stringify(updatedTeam)
+    );
+
+    return updatedTeam;
   }
 
   public adjustTeamBudget(
@@ -1370,6 +1401,49 @@ class DataService {
       req.deliveredAt = new Date().toISOString();
     }
 
+    // When shipment is processed / delivered / dispatched, capture live real-time currency rates (GBP to USD, EUR, AED)
+    if (status === 'delivered' || status === 'dispatched' || status === 'in_process') {
+      const baseAmount = req.sampleSkuTotal || req.budgetAmount || req.requestValue || 0;
+      const initialConverted = currencyService.convertGbp(baseAmount);
+      req.deliveredCurrencyRates = {
+        fetchedAt: new Date().toISOString(),
+        usdRate: initialConverted.usdRate,
+        eurRate: initialConverted.eurRate,
+        aedRate: initialConverted.aedRate,
+        totalUsd: initialConverted.usd,
+        totalEur: initialConverted.eur,
+        totalAed: initialConverted.aed
+      };
+
+    // Fetch fresh live rates from real-time API asynchronously and persist.
+      // Guard against race condition: only write if the request status hasn't changed
+      // since this closure was created (i.e., no other update ran in the meantime).
+      const capturedStatus = status;
+      const capturedRequestId = req.id;
+      currencyService.getLiveRates(true).then(freshRates => {
+        const freshConverted = currencyService.convertGbp(baseAmount, freshRates);
+        const freshRatePayload = {
+          fetchedAt: freshRates.timestamp,
+          usdRate: freshConverted.usdRate,
+          eurRate: freshConverted.eurRate,
+          aedRate: freshConverted.aedRate,
+          totalUsd: freshConverted.usd,
+          totalEur: freshConverted.eur,
+          totalAed: freshConverted.aed
+        };
+        // Re-read current state to avoid overwriting newer updates
+        const currentReqs = this.getRequests();
+        const found = currentReqs.find(r => r.id === capturedRequestId);
+        if (found && found.shipmentStatus === capturedStatus) {
+          found.deliveredCurrencyRates = freshRatePayload;
+          storage.set('requests', currentReqs);
+          api.updateRequest(capturedRequestId, { deliveredCurrencyRates: freshRatePayload }).catch(() => {});
+        }
+      }).catch(err => {
+        console.warn('[Forex Sync] Async live exchange rate fetch error:', err);
+      });
+    }
+
     const statusLabels: Record<ShipmentStatus, string> = {
       approved: 'Approved',
       in_process: 'In Process',
@@ -1392,7 +1466,12 @@ class DataService {
     req.comments.push(comment);
 
     storage.set('requests', requests);
-    api.updateRequest(req.id, { shipmentStatus: req.shipmentStatus, deliveredAt: req.deliveredAt, comments: req.comments }).catch(() => {});
+    api.updateRequest(req.id, {
+      shipmentStatus: req.shipmentStatus,
+      deliveredAt: req.deliveredAt,
+      comments: req.comments,
+      deliveredCurrencyRates: req.deliveredCurrencyRates
+    }).catch(() => {});
 
     this.notify(
       req.submittedByUserId,
@@ -1472,6 +1551,8 @@ class DataService {
     if (!form) return;
     forms = forms.filter(f => f.id !== formId);
     storage.set('forms', forms);
+    // Persist deletion to the database (was previously missing this call)
+    api.deleteForm(formId).catch(() => {});
     this.logAudit('FORM_UPDATE', 'Form', formId, `Deleted dynamic form "${form.title}"`, actor);
   }
 

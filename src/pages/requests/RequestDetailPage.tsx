@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import {
   ArrowLeft,
   CheckCircle2,
@@ -20,12 +20,16 @@ import {
   PackageCheck,
   PackageOpen,
   FormInput,
-  RotateCcw
+  RotateCcw,
+  Globe,
+  RefreshCw,
+  Coins
 } from 'lucide-react';
 import { RequestRecord, RequestStatus, ShipmentStatus } from '../../types/request';
 import { getCurrencySymbol } from '../../types/company';
 import { useAuth } from '../../context/AuthContext';
 import { dataService } from '../../services/dataService';
+import { currencyService, ExchangeRatesData } from '../../services/currencyService';
 import { Button } from '../../components/common/Button';
 import { Card, CardHeader, CardTitle, CardContent } from '../../components/common/Card';
 import { StatusBadge, PriorityBadge } from '../../components/common/Badge';
@@ -75,6 +79,67 @@ export const RequestDetailPage: React.FC<RequestDetailPageProps> = ({ requestId,
   const [appealReason, setAppealReason] = useState('');
   const [appealError, setAppealError] = useState('');
   const [isShipmentModalOpen, setIsShipmentModalOpen] = useState(false);
+
+  // Multi-Currency Selection & Live FX Rates
+  type LedgerCurrency = 'GBP' | 'USD' | 'EUR' | 'AED';
+  const [selectedCurrency, setSelectedCurrency] = useState<LedgerCurrency>('GBP');
+  const [fxRates, setFxRates] = useState<ExchangeRatesData>(() => currencyService.getCachedRates());
+  const [isLoadingFx, setIsLoadingFx] = useState(false);
+  const [useDeliveredRates, setUseDeliveredRates] = useState(true);
+
+  const fetchLiveFx = async (force = false) => {
+    setIsLoadingFx(true);
+    try {
+      const data = await currencyService.getLiveRates(force);
+      setFxRates(data);
+    } catch (err) {
+      console.warn('Failed to refresh FX rates in RequestDetailPage:', err);
+    } finally {
+      setIsLoadingFx(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchLiveFx();
+  }, []);
+
+  const hasDeliveredRates = Boolean(request?.deliveredCurrencyRates);
+  const effectiveRates = useMemo(() => {
+    if (hasDeliveredRates && useDeliveredRates && request?.deliveredCurrencyRates) {
+      return {
+        GBP: 1,
+        USD: request.deliveredCurrencyRates.usdRate || fxRates.rates.USD || 1.32,
+        EUR: request.deliveredCurrencyRates.eurRate || fxRates.rates.EUR || 1.16,
+        AED: request.deliveredCurrencyRates.aedRate || fxRates.rates.AED || 4.85,
+        isDelivered: true,
+        timestamp: request.deliveredCurrencyRates.fetchedAt
+      };
+    }
+    return {
+      GBP: 1,
+      USD: fxRates.rates.USD || 1.32,
+      EUR: fxRates.rates.EUR || 1.16,
+      AED: fxRates.rates.AED || 4.85,
+      isDelivered: false,
+      timestamp: fxRates.timestamp
+    };
+  }, [hasDeliveredRates, useDeliveredRates, request?.deliveredCurrencyRates, fxRates]);
+
+  const currencyConfig: Record<LedgerCurrency, { label: string; symbol: string; name: string }> = {
+    GBP: { label: 'GBP', symbol: '£', name: 'British Pound' },
+    USD: { label: 'USD', symbol: '$', name: 'US Dollar' },
+    EUR: { label: 'EUR', symbol: '€', name: 'Euro' },
+    AED: { label: 'AED', symbol: 'د.إ ', name: 'UAE Dirham' }
+  };
+
+  const formatAmount = (val: number, cur: LedgerCurrency = selectedCurrency) => {
+    const rate = effectiveRates[cur];
+    const converted = val * rate;
+    return `${currencyConfig[cur].symbol}${converted.toLocaleString(undefined, {
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2
+    })}`;
+  };
 
   if (!request || !team) {
     return (
@@ -642,8 +707,23 @@ export const RequestDetailPage: React.FC<RequestDetailPageProps> = ({ requestId,
         {/* Right Column: Real-Time Budget Impact Ledger */}
         <div className="space-y-6">
           <Card className="border-primary/30 shadow-md">
-            <CardHeader>
-              <CardTitle className="text-sm">Team Budget Impact Ledger</CardTitle>
+            <CardHeader className="pb-3">
+              <div className="flex items-center justify-between">
+                <CardTitle className="text-sm flex items-center gap-1.5">
+                  <Coins className="w-4 h-4 text-primary" />
+                  Team Budget Impact Ledger
+                </CardTitle>
+                <button
+                  type="button"
+                  onClick={() => fetchLiveFx(true)}
+                  disabled={isLoadingFx}
+                  title="Refresh live forex exchange rates"
+                  className="inline-flex items-center gap-1 px-2 py-1 text-[11px] rounded-md font-medium text-muted-foreground hover:text-foreground bg-muted hover:bg-muted/80 transition-colors disabled:opacity-50"
+                >
+                  <RefreshCw className={`w-3 h-3 ${isLoadingFx ? 'animate-spin text-primary' : ''}`} />
+                  <span className="hidden sm:inline">Refresh</span>
+                </button>
+              </div>
               <p className="text-xs text-muted-foreground">
                 Real-time financial reconciliation for {team.name}
               </p>
@@ -655,26 +735,134 @@ export const RequestDetailPage: React.FC<RequestDetailPageProps> = ({ requestId,
                   <span>This request's team ("{team.name}") was deleted — budget figures below are unavailable and approval may be blocked until it's reassigned.</span>
                 </div>
               )}
+
+              {/* Currency Selector & Rate Ribbon */}
+              <div className="p-3 rounded-xl bg-muted/40 border border-border/80 space-y-2.5">
+                <div className="flex items-center justify-between">
+                  <span className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground flex items-center gap-1">
+                    <Globe className="w-3.5 h-3.5 text-primary" />
+                    Currency View
+                  </span>
+                  {selectedCurrency !== 'GBP' ? (
+                    <span className="text-[11px] font-mono font-bold text-primary bg-primary/10 border border-primary/20 px-2 py-0.5 rounded-md">
+                      1 GBP = {effectiveRates[selectedCurrency].toFixed(4)} {selectedCurrency}
+                    </span>
+                  ) : (
+                    <span className="text-[11px] font-mono text-emerald-600 dark:text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded-md font-medium">
+                      Base Currency (£ GBP)
+                    </span>
+                  )}
+                </div>
+
+                {/* Currency Switcher Buttons */}
+                <div className="grid grid-cols-4 gap-1.5 p-1 rounded-lg bg-background border border-border">
+                  {(['GBP', 'USD', 'EUR', 'AED'] as LedgerCurrency[]).map((cur) => {
+                    const isSel = selectedCurrency === cur;
+                    return (
+                      <button
+                        key={cur}
+                        type="button"
+                        onClick={() => setSelectedCurrency(cur)}
+                        className={`py-1.5 px-2 rounded-md text-xs font-bold transition-all flex flex-col items-center justify-center gap-0.5 ${
+                          isSel
+                            ? 'bg-primary text-primary-foreground shadow-sm scale-[1.02]'
+                            : 'text-muted-foreground hover:text-foreground hover:bg-muted'
+                        }`}
+                      >
+                        <span className="text-[10px] font-semibold">{currencyConfig[cur].symbol.trim()}</span>
+                        <span className="text-xs">{cur}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+
+                {/* Exchange Rate Status Indicator */}
+                <div className="flex items-center justify-between text-[10px] text-muted-foreground px-0.5">
+                  <span className="flex items-center gap-1.5">
+                    <span className={`w-2 h-2 rounded-full ${effectiveRates.isDelivered ? 'bg-amber-500' : 'bg-emerald-500 animate-pulse'}`} />
+                    <span>{effectiveRates.isDelivered ? 'Locked Delivery FX Rate' : 'Live Real-Time Market Rate'}</span>
+                  </span>
+                  {hasDeliveredRates && (
+                    <button
+                      type="button"
+                      onClick={() => setUseDeliveredRates(!useDeliveredRates)}
+                      className="underline hover:text-foreground text-[10px] font-medium"
+                    >
+                      {useDeliveredRates ? 'Switch to Live Rates' : 'Switch to Delivery Rates'}
+                    </button>
+                  )}
+                </div>
+              </div>
+
               {/* Financial Snapshot Numbers */}
               <div className="space-y-3 font-mono text-xs">
                 <div className="flex items-center justify-between pb-2 border-b border-border/80">
-                  <span className="text-muted-foreground">Original / Retail Value:</span>
-                  <span className="font-semibold text-foreground">${(request.requestValue || 0).toLocaleString()}</span>
+                  <span className="text-muted-foreground font-sans">Original / Retail Value:</span>
+                  <span className="font-semibold text-foreground">
+                    {formatAmount(request.requestValue || request.budgetAmount || 0)}
+                  </span>
                 </div>
                 <div className="flex items-center justify-between pb-2 border-b border-border/80">
-                  <span className="text-muted-foreground font-bold">Total Budget Charged:</span>
-                  <span className="font-bold text-sm text-primary">${(request.budgetAmount || 0).toLocaleString()}</span>
+                  <span className="text-muted-foreground font-sans font-bold">Total Budget Charged:</span>
+                  <span className="font-bold text-sm text-primary">
+                    {formatAmount(request.budgetAmount || 0)}
+                  </span>
                 </div>
                 <div className="flex items-center justify-between pb-2 border-b border-border/80">
-                  <span className="text-muted-foreground">Current Team Remaining:</span>
-                  <span className="font-semibold text-foreground">${(team.remainingBudget || 0).toLocaleString()}</span>
+                  <span className="text-muted-foreground font-sans">Current Team Remaining:</span>
+                  <span className="font-semibold text-foreground">
+                    {formatAmount(team.remainingBudget || 0)}
+                  </span>
                 </div>
                 <div className="flex items-center justify-between pt-1">
-                  <span className="text-muted-foreground font-bold">Projected After Approval:</span>
-                  <span className={`font-bold text-sm ${hasSufficientBudget ? 'text-foreground' : 'text-rose-600 dark:text-rose-400'
-                    }`}>
-                    ${((team.remainingBudget || 0) - (request.status === 'approved' ? 0 : (request.budgetAmount || 0))).toLocaleString()}
+                  <span className="text-muted-foreground font-sans font-bold">Projected After Approval:</span>
+                  <span className={`font-bold text-sm ${hasSufficientBudget ? 'text-foreground' : 'text-rose-600 dark:text-rose-400'}`}>
+                    {formatAmount((team.remainingBudget || 0) - (request.status === 'approved' ? 0 : (request.budgetAmount || 0)))}
                   </span>
+                </div>
+              </div>
+
+              {/* Multi-Currency Approved Budget Breakdown Grid */}
+              <div className="pt-3 border-t border-border/80 space-y-2">
+                <div className="flex items-center justify-between">
+                  <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground flex items-center gap-1">
+                    <Coins className="w-3 h-3 text-primary" />
+                    Approved Budget in All Currencies
+                  </span>
+                  <span className="text-[9px] text-muted-foreground">
+                    Click to switch view
+                  </span>
+                </div>
+
+                <div className="grid grid-cols-2 gap-2">
+                  {(['GBP', 'USD', 'EUR', 'AED'] as LedgerCurrency[]).map((cur) => {
+                    const isSel = selectedCurrency === cur;
+                    const rate = effectiveRates[cur];
+                    return (
+                      <button
+                        key={cur}
+                        type="button"
+                        onClick={() => setSelectedCurrency(cur)}
+                        className={`p-2 rounded-lg border text-left transition-all ${
+                          isSel
+                            ? 'bg-primary/10 border-primary shadow-sm ring-1 ring-primary/40'
+                            : 'bg-muted/40 border-border/60 hover:bg-muted/80'
+                        }`}
+                      >
+                        <div className="flex items-center justify-between text-[10px]">
+                          <span className="font-bold text-foreground">
+                            {currencyConfig[cur].symbol.trim()} {cur}
+                          </span>
+                          <span className="text-muted-foreground font-mono text-[9px]">
+                            {cur === 'GBP' ? 'Base' : `@${rate.toFixed(2)}`}
+                          </span>
+                        </div>
+                        <div className="text-xs font-bold font-mono text-primary mt-1">
+                          {formatAmount(request.budgetAmount || 0, cur)}
+                        </div>
+                      </button>
+                    );
+                  })}
                 </div>
               </div>
 
@@ -686,7 +874,7 @@ export const RequestDetailPage: React.FC<RequestDetailPageProps> = ({ requestId,
                     <span>Insufficient Budget Alert</span>
                   </div>
                   <p className="text-[11px] leading-relaxed">
-                    This team only has ${(team.remainingBudget || 0).toLocaleString()} left. Standard approval is blocked unless authorized by Super Admin or President override.
+                    This team only has {formatAmount(team.remainingBudget || 0)} left. Standard approval is blocked unless authorized by Super Admin or President override.
                   </p>
                 </div>
               )}
@@ -698,7 +886,7 @@ export const RequestDetailPage: React.FC<RequestDetailPageProps> = ({ requestId,
                     <span>Budget Deducted Successfully</span>
                   </div>
                   <p className="text-[11px] leading-relaxed">
-                    ${(request.budgetAmount || 0).toLocaleString()} has been charged to {team.name}'s fiscal ledger.
+                    {formatAmount(request.budgetAmount || 0)} has been charged to {team.name}'s fiscal ledger ({formatAmount(request.budgetAmount || 0, 'GBP')} GBP).
                   </p>
                 </div>
               )}
