@@ -782,13 +782,14 @@ export const NewRequestModal: React.FC<NewRequestModalProps> = ({ isOpen, onClos
                   <select
                     value={currency}
                     onChange={(e) => setCurrency(e.target.value)}
-                    className="text-xs font-bold text-foreground font-mono bg-transparent focus:outline-none cursor-pointer"
+                    className="text-xs font-bold text-foreground font-mono bg-background focus:outline-none cursor-pointer dark:bg-card dark:text-foreground"
                   >
                     {COMPANY_CURRENCIES.filter(c => c.value !== 'AUD').map(c => (
-                      <option key={c.value} value={c.value}>{c.symbol} {c.value}</option>
+                      <option key={c.value} value={c.value} className="bg-background text-foreground dark:bg-card dark:text-foreground">{c.symbol} {c.value}</option>
                     ))}
                   </select>
                 </div>
+
 
                 <Button
                   type="button"

@@ -1400,7 +1400,13 @@ class DataService {
     requestId: string,
     status: ShipmentStatus,
     actor: User,
-    note?: string
+    note?: string,
+    shipmentDetails?: {
+      trackingIds?: string[];
+      address?: string;
+      shipmentDate?: string;
+      organization?: string;
+    }
   ): RequestRecord {
     const isShipmentManager = actor.roleName === 'Shipment Manager' || actor.roleName === 'Super Admin';
     if (!isShipmentManager) {
@@ -1414,6 +1420,17 @@ class DataService {
     const previousStatus = req.shipmentStatus;
     req.shipmentStatus = status;
     req.updatedAt = new Date().toISOString();
+
+    // Persist shipment manager detail fields
+    if (shipmentDetails) {
+      if (shipmentDetails.trackingIds && shipmentDetails.trackingIds.length > 0) {
+        req.shipmentTrackingIds = shipmentDetails.trackingIds.filter(id => id.trim());
+      }
+      if (shipmentDetails.address?.trim()) req.shipmentAddress = shipmentDetails.address.trim();
+      if (shipmentDetails.shipmentDate?.trim()) req.shipmentDate = shipmentDetails.shipmentDate.trim();
+      if (shipmentDetails.organization?.trim()) req.shipmentOrganization = shipmentDetails.organization.trim();
+    }
+    if (note?.trim()) req.shipmentNotes = note.trim();
 
     if (status === 'delivered') {
       req.deliveredAt = new Date().toISOString();
@@ -1493,7 +1510,12 @@ class DataService {
       shipmentStatus: req.shipmentStatus,
       deliveredAt: req.deliveredAt,
       comments: req.comments,
-      deliveredCurrencyRates: req.deliveredCurrencyRates
+      deliveredCurrencyRates: req.deliveredCurrencyRates,
+      shipmentTrackingIds: req.shipmentTrackingIds,
+      shipmentAddress: req.shipmentAddress,
+      shipmentDate: req.shipmentDate,
+      shipmentOrganization: req.shipmentOrganization,
+      shipmentNotes: req.shipmentNotes
     }).catch(() => {});
 
     this.notify(

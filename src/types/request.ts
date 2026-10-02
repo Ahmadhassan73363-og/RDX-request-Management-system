@@ -74,6 +74,13 @@ export interface RequestRecord {
   shipmentStatus?: ShipmentStatus;
   deliveredAt?: string;
 
+  // Shipment Manager Details (filled when transitioning statuses)
+  shipmentTrackingIds?: string[];       // One or more courier tracking IDs
+  shipmentAddress?: string;             // Destination shipping address
+  shipmentDate?: string;                // Scheduled/actual shipment date (YYYY-MM-DD)
+  shipmentOrganization?: string;        // Carrier / logistics organization name
+  shipmentNotes?: string;               // Additional logistics note (optional)
+
   // Specific FOC Sample Tracking Fields
   currency?: string;          // 'GBP' | 'USD'
   date?: string;

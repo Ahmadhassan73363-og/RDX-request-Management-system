@@ -18,7 +18,12 @@ import {
   RefreshCw,
   LayoutGrid,
   List,
-  MapPin
+  MapPin,
+  Hash,
+  Plus,
+  Trash2,
+  AlertTriangle,
+  Info
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { dataService } from '../../services/dataService';
@@ -43,7 +48,7 @@ const SHIPMENT_STATUSES: {
 }[] = [
   {
     key: 'approved',
-    label: 'Approved – Ready',
+    label: 'Approved - Ready',
     sublabel: 'Awaiting warehouse processing',
     badgeClass: 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border-emerald-500/30',
     borderClass: 'border-emerald-500/30',
@@ -79,6 +84,19 @@ const SHIPMENT_STATUSES: {
   }
 ];
 
+/** Returns the index in SHIPMENT_STATUSES for a given status key */
+const getStatusIndex = (status?: ShipmentStatus): number => {
+  const idx = SHIPMENT_STATUSES.findIndex(s => s.key === (status || 'approved'));
+  return idx === -1 ? 0 : idx;
+};
+
+/** Returns the next status key after current (or null if already at end) */
+const getNextStatus = (current?: ShipmentStatus): ShipmentStatus | null => {
+  const idx = getStatusIndex(current);
+  if (idx >= SHIPMENT_STATUSES.length - 1) return null;
+  return SHIPMENT_STATUSES[idx + 1].key;
+};
+
 export const ShipmentTrackingPage: React.FC<ShipmentTrackingPageProps> = ({ onNavigateToRequest }) => {
   const { currentUser, hasPermission } = useAuth();
   const [viewMode, setViewMode] = useState<'board' | 'table'>('board');
@@ -89,10 +107,15 @@ export const ShipmentTrackingPage: React.FC<ShipmentTrackingPageProps> = ({ onNa
 
   // Status update modal state
   const [updatingRequest, setUpdatingRequest] = useState<RequestRecord | null>(null);
-  const [targetStatus, setTargetStatus] = useState<ShipmentStatus>('in_process');
-  const [trackingNote, setTrackingNote] = useState('');
   const [actionError, setActionError] = useState('');
   const [isProcessing, setIsProcessing] = useState(false);
+
+  // Shipment detail fields (filled by Shipment Manager during transition)
+  const [trackingIds, setTrackingIds] = useState<string[]>(['']);
+  const [shippingAddress, setShippingAddress] = useState('');
+  const [shipmentDate, setShipmentDate] = useState('');
+  const [organization, setOrganization] = useState('');
+  const [dispatchNote, setDispatchNote] = useState('');
 
   // Shipment Manager check: only Shipment Manager role (or Super Admin) can transition statuses
   const isShipmentManager =
@@ -106,27 +129,22 @@ export const ShipmentTrackingPage: React.FC<ShipmentTrackingPageProps> = ({ onNa
   // Eligible shipment requests are those approved (or already assigned a shipment status)
   const shipmentRequests = useMemo(() => {
     return allRequests.filter(r => {
-      // Must be approved or explicitly have a shipment status
       const hasShipStatus = !!r.shipmentStatus;
       const isApproved = r.status === 'approved';
       if (!hasShipStatus && !isApproved) return false;
 
-      // Filter search
       if (searchQuery.trim()) {
         const q = searchQuery.toLowerCase();
         const matchTracking = (r.trackingNumber || '').toLowerCase().includes(q);
         const matchCustomer = (r.customerName || '').toLowerCase().includes(q);
         const matchCompany = (r.customerCompany || '').toLowerCase().includes(q);
         const matchItem = (r.requestItem || '').toLowerCase().includes(q);
-        if (!matchTracking && !matchCustomer && !matchCompany && !matchItem) return false;
+        const matchShipIds = (r.shipmentTrackingIds || []).some(id => id.toLowerCase().includes(q));
+        if (!matchTracking && !matchCustomer && !matchCompany && !matchItem && !matchShipIds) return false;
       }
 
-      // Filter team
-      if (selectedTeam !== 'ALL' && r.teamId !== selectedTeam) {
-        return false;
-      }
+      if (selectedTeam !== 'ALL' && r.teamId !== selectedTeam) return false;
 
-      // Filter status
       if (selectedStatusFilter !== 'ALL') {
         const currentShipStatus = r.shipmentStatus || 'approved';
         if (currentShipStatus !== selectedStatusFilter) return false;
@@ -157,42 +175,75 @@ export const ShipmentTrackingPage: React.FC<ShipmentTrackingPageProps> = ({ onNa
     return Object.values(statusCounts).reduce((a, b) => a + b, 0);
   }, [statusCounts]);
 
-  const handleOpenUpdateModal = (req: RequestRecord, nextStatus?: ShipmentStatus) => {
+  const handleOpenUpdateModal = (req: RequestRecord) => {
     if (!isShipmentManager) return;
+    const nextStatus = getNextStatus(req.shipmentStatus as ShipmentStatus | undefined);
+    if (!nextStatus) return; // Already at final status
+
     setUpdatingRequest(req);
-    const currentStatus = (req.shipmentStatus || 'approved') as ShipmentStatus;
-    if (nextStatus) {
-      setTargetStatus(nextStatus);
-    } else {
-      // Default to next status in pipeline
-      const idx = SHIPMENT_STATUSES.findIndex(s => s.key === currentStatus);
-      const nextIdx = Math.min(idx + 1, SHIPMENT_STATUSES.length - 1);
-      setTargetStatus(SHIPMENT_STATUSES[nextIdx].key);
-    }
-    setTrackingNote('');
     setActionError('');
+    // Pre-fill with any existing data
+    setTrackingIds(req.shipmentTrackingIds && req.shipmentTrackingIds.length > 0 ? [...req.shipmentTrackingIds] : ['']);
+    setShippingAddress(req.shipmentAddress || '');
+    setShipmentDate(req.shipmentDate || new Date().toISOString().split('T')[0]);
+    setOrganization(req.shipmentOrganization || '');
+    setDispatchNote(req.shipmentNotes || '');
   };
 
   const handleExecuteStatusUpdate = () => {
     if (!updatingRequest) return;
     setActionError('');
-    setIsProcessing(true);
 
+    const nextStatus = getNextStatus(updatingRequest.shipmentStatus as ShipmentStatus | undefined);
+    if (!nextStatus) {
+      setActionError('This shipment is already at the final stage.');
+      return;
+    }
+
+    // Validate required fields based on the stage we're moving to
+    const validTrackingIds = trackingIds.filter(id => id.trim());
+    if (nextStatus === 'dispatched' && validTrackingIds.length === 0) {
+      setActionError('At least one Courier Tracking ID is required before dispatching.');
+      return;
+    }
+    if ((nextStatus === 'dispatched' || nextStatus === 'in_process') && !shippingAddress.trim()) {
+      setActionError('Shipping address is required.');
+      return;
+    }
+
+    setIsProcessing(true);
     try {
       dataService.updateShipmentStatus(
         updatingRequest.id,
-        targetStatus,
+        nextStatus,
         currentUser,
-        trackingNote.trim() || undefined
+        dispatchNote.trim() || undefined,
+        {
+          trackingIds: validTrackingIds,
+          address: shippingAddress,
+          shipmentDate,
+          organization
+        }
       );
       setUpdatingRequest(null);
-      setTrackingNote('');
       setRefreshTick(t => t + 1);
     } catch (err: any) {
       setActionError(err.message || 'Failed to update shipment status');
     } finally {
       setIsProcessing(false);
     }
+  };
+
+  const handleAddTrackingId = () => {
+    setTrackingIds(prev => [...prev, '']);
+  };
+
+  const handleRemoveTrackingId = (index: number) => {
+    setTrackingIds(prev => prev.length > 1 ? prev.filter((_, i) => i !== index) : ['']);
+  };
+
+  const handleTrackingIdChange = (index: number, value: string) => {
+    setTrackingIds(prev => prev.map((id, i) => i === index ? value : id));
   };
 
   const getStatusBadge = (status?: string) => {
@@ -205,6 +256,36 @@ export const ShipmentTrackingPage: React.FC<ShipmentTrackingPageProps> = ({ onNa
       </span>
     );
   };
+
+  // Status pipeline progress indicator
+  const StatusPipeline: React.FC<{ current?: ShipmentStatus }> = ({ current }) => {
+    const currentIdx = getStatusIndex(current);
+    return (
+      <div className="flex items-center gap-1 w-full">
+        {SHIPMENT_STATUSES.map((st, idx) => (
+          <React.Fragment key={st.key}>
+            <div className={`flex items-center gap-1 px-2 py-1 rounded-lg text-[10px] font-semibold flex-1 justify-center border transition-all ${
+              idx < currentIdx
+                ? 'bg-primary/10 border-primary/30 text-primary'
+                : idx === currentIdx
+                  ? `border ${st.borderClass} ${st.badgeClass}`
+                  : 'bg-muted/30 border-border/50 text-muted-foreground'
+            }`}>
+              {st.icon}
+              <span className="hidden sm:inline ml-1">{st.label}</span>
+            </div>
+            {idx < SHIPMENT_STATUSES.length - 1 && (
+              <ArrowRight className={`w-3 h-3 shrink-0 ${idx < currentIdx ? 'text-primary' : 'text-muted-foreground/40'}`} />
+            )}
+          </React.Fragment>
+        ))}
+      </div>
+    );
+  };
+
+  // Computed next status details for the modal
+  const nextStatusKey = updatingRequest ? getNextStatus(updatingRequest.shipmentStatus as ShipmentStatus | undefined) : null;
+  const nextStatusConfig = nextStatusKey ? SHIPMENT_STATUSES.find(s => s.key === nextStatusKey) : null;
 
   return (
     <div className="space-y-6">
@@ -220,7 +301,6 @@ export const ShipmentTrackingPage: React.FC<ShipmentTrackingPageProps> = ({ onNa
           </p>
         </div>
 
-        {/* Manager Role Badge / Notice */}
         <div className="flex items-center gap-2.5">
           {isShipmentManager ? (
             <div className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-emerald-500/10 border border-emerald-500/30 text-emerald-700 dark:text-emerald-400 text-xs font-semibold">
@@ -317,7 +397,7 @@ export const ShipmentTrackingPage: React.FC<ShipmentTrackingPageProps> = ({ onNa
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
           <input
             type="text"
-            placeholder="Search tracking #, recipient, company, item..."
+            placeholder="Search tracking #, recipient, company, item, courier ID..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             className="w-full bg-background border border-input rounded-lg pl-9 pr-3.5 py-1.5 text-xs text-foreground focus:outline-none focus:ring-2 focus:ring-primary/30"
@@ -400,6 +480,8 @@ export const ShipmentTrackingPage: React.FC<ShipmentTrackingPageProps> = ({ onNa
                     </div>
                   ) : (
                     columnItems.map(req => {
+                      const nextSt = getNextStatus(req.shipmentStatus as ShipmentStatus | undefined);
+                      const isDelivered = (req.shipmentStatus || 'approved') === 'delivered';
                       return (
                         <div
                           key={req.id}
@@ -440,7 +522,37 @@ export const ShipmentTrackingPage: React.FC<ShipmentTrackingPageProps> = ({ onNa
                             )}
                           </div>
 
-                          {/* Shipment Manager Action Trigger */}
+                          {/* Shipment detail chips if data exists */}
+                          {(req.shipmentTrackingIds?.length || req.shipmentAddress || req.shipmentOrganization) && (
+                            <div className="p-2 rounded-lg bg-primary/5 border border-primary/15 text-[10px] space-y-1">
+                              {req.shipmentOrganization && (
+                                <div className="flex items-center gap-1 text-muted-foreground">
+                                  <Truck className="w-3 h-3 shrink-0 text-primary" />
+                                  <span className="font-medium text-foreground">{req.shipmentOrganization}</span>
+                                </div>
+                              )}
+                              {req.shipmentTrackingIds && req.shipmentTrackingIds.length > 0 && (
+                                <div className="flex items-start gap-1 text-muted-foreground">
+                                  <Hash className="w-3 h-3 shrink-0 text-primary mt-0.5" />
+                                  <span className="font-mono text-[10px] break-all">{req.shipmentTrackingIds.join(' · ')}</span>
+                                </div>
+                              )}
+                              {req.shipmentAddress && (
+                                <div className="flex items-start gap-1 text-muted-foreground">
+                                  <MapPin className="w-3 h-3 shrink-0 text-primary mt-0.5" />
+                                  <span className="truncate">{req.shipmentAddress}</span>
+                                </div>
+                              )}
+                              {req.shipmentDate && (
+                                <div className="flex items-center gap-1 text-muted-foreground">
+                                  <Calendar className="w-3 h-3 shrink-0 text-primary" />
+                                  <span>Shipment date: {req.shipmentDate}</span>
+                                </div>
+                              )}
+                            </div>
+                          )}
+
+                          {/* Action row */}
                           <div className="pt-1 flex items-center justify-between border-t border-border/60 text-[11px]">
                             <span className="text-[10px] text-muted-foreground flex items-center gap-1 font-mono">
                               <Calendar className="w-3 h-3" />
@@ -448,13 +560,21 @@ export const ShipmentTrackingPage: React.FC<ShipmentTrackingPageProps> = ({ onNa
                             </span>
 
                             {isShipmentManager ? (
-                              <button
-                                onClick={() => handleOpenUpdateModal(req)}
-                                className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-primary/10 hover:bg-primary/20 text-primary font-semibold text-[11px] transition-colors"
-                              >
-                                <span>Update Status</span>
-                                <ChevronRight className="w-3 h-3" />
-                              </button>
+                              isDelivered ? (
+                                <span className="text-[10px] text-teal-600 dark:text-teal-400 font-semibold flex items-center gap-1">
+                                  <PackageCheck className="w-3 h-3" /> Delivered
+                                </span>
+                              ) : (
+                                <button
+                                  onClick={() => handleOpenUpdateModal(req)}
+                                  className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-primary/10 hover:bg-primary/20 text-primary font-semibold text-[11px] transition-colors"
+                                >
+                                  <span>
+                                    {nextSt ? `-> ${SHIPMENT_STATUSES.find(s => s.key === nextSt)?.label}` : 'Advance'}
+                                  </span>
+                                  <ChevronRight className="w-3 h-3" />
+                                </button>
+                              )
                             ) : (
                               <button
                                 onClick={() => onNavigateToRequest(req.id)}
@@ -490,8 +610,9 @@ export const ShipmentTrackingPage: React.FC<ShipmentTrackingPageProps> = ({ onNa
                     <th className="p-3">Recipient & Company</th>
                     <th className="p-3">Team</th>
                     <th className="p-3">Item Description</th>
+                    <th className="p-3">Courier / IDs</th>
                     <th className="p-3">Budget</th>
-                    <th className="p-3">Current Shipment Status</th>
+                    <th className="p-3">Shipment Status</th>
                     <th className="p-3">Approved Date</th>
                     <th className="p-3 pr-4 text-right">Logistics Action</th>
                   </tr>
@@ -499,13 +620,13 @@ export const ShipmentTrackingPage: React.FC<ShipmentTrackingPageProps> = ({ onNa
                 <tbody className="divide-y divide-border/60">
                   {shipmentRequests.length === 0 ? (
                     <tr>
-                      <td colSpan={8} className="p-8 text-center text-muted-foreground italic">
+                      <td colSpan={9} className="p-8 text-center text-muted-foreground italic">
                         No shipment packages match your current filter criteria
                       </td>
                     </tr>
                   ) : (
                     shipmentRequests.map(req => {
-                      const currentStatus = (req.shipmentStatus || 'approved') as ShipmentStatus;
+                      const isDelivered = (req.shipmentStatus || 'approved') === 'delivered';
                       return (
                         <tr key={req.id} className="hover:bg-muted/40 transition-colors">
                           <td className="p-3 pl-4">
@@ -527,6 +648,22 @@ export const ShipmentTrackingPage: React.FC<ShipmentTrackingPageProps> = ({ onNa
                           <td className="p-3 text-foreground/90 max-w-[200px] truncate">
                             {req.requestItem}
                           </td>
+                          <td className="p-3">
+                            {req.shipmentOrganization && (
+                              <div className="text-[11px] font-semibold text-foreground">{req.shipmentOrganization}</div>
+                            )}
+                            {req.shipmentTrackingIds && req.shipmentTrackingIds.length > 0 ? (
+                              <div className="text-[11px] font-mono text-muted-foreground space-y-0.5">
+                                {req.shipmentTrackingIds.map((id, i) => (
+                                  <div key={i} className="flex items-center gap-0.5">
+                                    <Hash className="w-2.5 h-2.5" />{id}
+                                  </div>
+                                ))}
+                              </div>
+                            ) : (
+                              <span className="text-[11px] text-muted-foreground italic">—</span>
+                            )}
+                          </td>
                           <td className="p-3 font-mono font-bold text-foreground">
                             ${(req.budgetAmount || 0).toLocaleString()}
                           </td>
@@ -538,14 +675,20 @@ export const ShipmentTrackingPage: React.FC<ShipmentTrackingPageProps> = ({ onNa
                           </td>
                           <td className="p-3 pr-4 text-right">
                             {isShipmentManager ? (
-                              <Button
-                                variant="outline"
-                                size="sm"
-                                onClick={() => handleOpenUpdateModal(req)}
-                                leftIcon={<Truck className="w-3.5 h-3.5" />}
-                              >
-                                Update Status
-                              </Button>
+                              isDelivered ? (
+                                <span className="text-[11px] text-teal-600 dark:text-teal-400 font-semibold flex items-center gap-1 justify-end">
+                                  <PackageCheck className="w-3 h-3" /> Delivered
+                                </span>
+                              ) : (
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  onClick={() => handleOpenUpdateModal(req)}
+                                  leftIcon={<Truck className="w-3.5 h-3.5" />}
+                                >
+                                  Advance Status
+                                </Button>
+                              )
                             ) : (
                               <button
                                 onClick={() => onNavigateToRequest(req.id)}
@@ -570,18 +713,48 @@ export const ShipmentTrackingPage: React.FC<ShipmentTrackingPageProps> = ({ onNa
       <Modal
         isOpen={!!updatingRequest}
         onClose={() => setUpdatingRequest(null)}
-        title="Update Logistics Shipment Status"
+        title="Advance Shipment Status"
         description={updatingRequest ? `Tracking #${updatingRequest.trackingNumber} · ${updatingRequest.customerName}` : ''}
-        maxWidth="md"
+        maxWidth="lg"
       >
-        {updatingRequest && (
-          <div className="space-y-4">
+        {updatingRequest && nextStatusConfig && (
+          <div className="space-y-5">
             {actionError && (
-              <div className="p-3 rounded-xl bg-destructive/10 border border-destructive/20 text-destructive text-xs">
+              <div className="p-3 rounded-xl bg-destructive/10 border border-destructive/20 text-destructive text-xs flex items-center gap-2">
+                <AlertTriangle className="w-4 h-4 shrink-0" />
                 {actionError}
               </div>
             )}
 
+            {/* Pipeline Progress */}
+            <div className="space-y-2">
+              <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Shipment Pipeline</p>
+              <StatusPipeline current={updatingRequest.shipmentStatus as ShipmentStatus | undefined} />
+            </div>
+
+            {/* Current to Next transition indicator */}
+            <div className="flex items-center gap-3 p-3.5 rounded-xl bg-muted/30 border border-border/80">
+              <div className="flex-1 text-center">
+                <p className="text-[10px] uppercase tracking-wider text-muted-foreground mb-1">Current Status</p>
+                {getStatusBadge(updatingRequest.shipmentStatus)}
+              </div>
+              <ArrowRight className="w-5 h-5 text-primary shrink-0" />
+              <div className="flex-1 text-center">
+                <p className="text-[10px] uppercase tracking-wider text-muted-foreground mb-1">Will Advance To</p>
+                <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold border ${nextStatusConfig.badgeClass} ring-2 ring-primary/30`}>
+                  {nextStatusConfig.icon}
+                  {nextStatusConfig.label}
+                </span>
+              </div>
+            </div>
+
+            {/* Info callout */}
+            <div className="flex items-start gap-2 p-3 rounded-lg bg-blue-500/5 border border-blue-500/20 text-[11px] text-blue-700 dark:text-blue-400">
+              <Info className="w-4 h-4 shrink-0 mt-0.5" />
+              <p>Status advances <strong>one step at a time</strong> and cannot be reversed. Fill in the shipment details below before confirming the transition.</p>
+            </div>
+
+            {/* Request Summary */}
             <div className="p-3.5 rounded-xl bg-primary/5 border border-primary/20 space-y-2 text-xs">
               <div className="flex items-center justify-between">
                 <span className="text-muted-foreground">Recipient:</span>
@@ -591,62 +764,128 @@ export const ShipmentTrackingPage: React.FC<ShipmentTrackingPageProps> = ({ onNa
                 <span className="text-muted-foreground">Item Description:</span>
                 <span className="font-semibold text-foreground">{updatingRequest.requestItem}</span>
               </div>
-              <div className="flex items-center justify-between">
-                <span className="text-muted-foreground">Current Shipment Status:</span>
-                <span>{getStatusBadge(updatingRequest.shipmentStatus)}</span>
-              </div>
+              {updatingRequest.warehouseName && (
+                <div className="flex items-center justify-between">
+                  <span className="text-muted-foreground">Ships From:</span>
+                  <span className="font-semibold text-foreground flex items-center gap-1">
+                    <MapPin className="w-3 h-3" /> {updatingRequest.warehouseName}
+                  </span>
+                </div>
+              )}
             </div>
 
-            <div className="space-y-2">
-              <label className="block text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                Select New Shipment Status *
-              </label>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                {SHIPMENT_STATUSES.map(st => {
-                  const isSelected = targetStatus === st.key;
-                  const isCurrent = (updatingRequest.shipmentStatus || 'approved') === st.key;
+            {/* Shipment Details Form */}
+            <div className="space-y-4 p-4 rounded-xl border border-border bg-muted/10">
+              <p className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground flex items-center gap-1.5">
+                <Package className="w-3.5 h-3.5 text-primary" />
+                Shipment Manager Details
+              </p>
 
-                  return (
-                    <button
-                      key={st.key}
-                      type="button"
-                      onClick={() => setTargetStatus(st.key)}
-                      className={`flex items-start gap-3 p-3 rounded-xl border text-left transition-all ${
-                        isSelected
-                          ? 'border-primary bg-primary/10 ring-2 ring-primary/30'
-                          : 'border-border hover:border-primary/50 bg-background'
-                      }`}
-                    >
-                      <span className={`p-1.5 rounded-lg border mt-0.5 ${st.badgeClass}`}>{st.icon}</span>
-                      <div className="space-y-0.5">
-                        <div className="flex items-center gap-1.5">
-                          <span className="text-xs font-bold text-foreground">{st.label}</span>
-                          {isCurrent && (
-                            <span className="text-[9px] px-1.5 py-0.2 rounded bg-muted text-muted-foreground font-mono">Current</span>
-                          )}
-                        </div>
-                        <p className="text-[10px] text-muted-foreground">{st.sublabel}</p>
+              {/* Carrier / Organization */}
+              <div className="space-y-1.5">
+                <label className="block text-xs font-semibold text-foreground">
+                  Carrier / Logistics Organization
+                </label>
+                <input
+                  type="text"
+                  value={organization}
+                  onChange={e => setOrganization(e.target.value)}
+                  placeholder="e.g. DHL Express, FedEx, Aramex, UPS..."
+                  className="w-full bg-background border border-input rounded-lg px-3.5 py-2 text-xs text-foreground focus:outline-none focus:ring-2 focus:ring-primary/30 placeholder:text-muted-foreground/60"
+                />
+              </div>
+
+              {/* Tracking IDs (multiple) */}
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <label className="block text-xs font-semibold text-foreground">
+                    Courier Tracking ID(s) {nextStatusKey === 'dispatched' && <span className="text-destructive ml-0.5">*</span>}
+                  </label>
+                  <button
+                    type="button"
+                    onClick={handleAddTrackingId}
+                    className="flex items-center gap-1 text-[11px] font-semibold text-primary hover:text-primary/80 transition-colors"
+                  >
+                    <Plus className="w-3.5 h-3.5" />
+                    Add ID
+                  </button>
+                </div>
+                <div className="space-y-2">
+                  {trackingIds.map((tid, idx) => (
+                    <div key={idx} className="flex items-center gap-2">
+                      <div className="flex items-center flex-1 gap-2 bg-background border border-input rounded-lg px-3 py-2 focus-within:ring-2 focus-within:ring-primary/30">
+                        <Hash className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
+                        <input
+                          type="text"
+                          value={tid}
+                          onChange={e => handleTrackingIdChange(idx, e.target.value)}
+                          placeholder="e.g. 1Z999AA10123456784"
+                          className="flex-1 text-xs text-foreground font-mono bg-transparent focus:outline-none placeholder:text-muted-foreground/60"
+                        />
                       </div>
-                    </button>
-                  );
-                })}
+                      <button
+                        type="button"
+                        onClick={() => handleRemoveTrackingId(idx)}
+                        className="p-1.5 rounded-lg text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors"
+                        title="Remove tracking ID"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* Shipping Address */}
+              <div className="space-y-1.5">
+                <label className="block text-xs font-semibold text-foreground">
+                  Shipment Destination Address
+                  {(nextStatusKey === 'dispatched' || nextStatusKey === 'in_process') && (
+                    <span className="text-destructive ml-0.5">*</span>
+                  )}
+                </label>
+                <textarea
+                  rows={2}
+                  value={shippingAddress}
+                  onChange={e => setShippingAddress(e.target.value)}
+                  placeholder="e.g. 123 Business Park, Suite 400, Dubai, UAE"
+                  className="w-full bg-background border border-input rounded-lg px-3.5 py-2 text-xs text-foreground focus:outline-none focus:ring-2 focus:ring-primary/30 placeholder:text-muted-foreground/60 resize-none"
+                />
+              </div>
+
+              {/* Shipment Date */}
+              <div className="space-y-1.5">
+                <label className="block text-xs font-semibold text-foreground">
+                  Shipment Date
+                </label>
+                <div className="flex items-center gap-2 bg-background border border-input rounded-lg px-3 py-2 focus-within:ring-2 focus-within:ring-primary/30">
+                  <Calendar className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
+                  <input
+                    type="date"
+                    value={shipmentDate}
+                    onChange={e => setShipmentDate(e.target.value)}
+                    className="flex-1 text-xs text-foreground bg-transparent focus:outline-none"
+                  />
+                </div>
+              </div>
+
+              {/* Dispatch / Logistics Note */}
+              <div className="space-y-1.5">
+                <label className="block text-xs font-semibold text-foreground">
+                  Logistics Note <span className="text-muted-foreground font-normal">(Optional)</span>
+                </label>
+                <textarea
+                  rows={2}
+                  value={dispatchNote}
+                  onChange={e => setDispatchNote(e.target.value)}
+                  placeholder="e.g. Fragile items - handle with care. Estimated arrival Friday. Confirm with recipient..."
+                  className="w-full bg-background border border-input rounded-lg px-3.5 py-2 text-xs text-foreground focus:outline-none focus:ring-2 focus:ring-primary/30 placeholder:text-muted-foreground/60 resize-none"
+                />
               </div>
             </div>
 
-            <div className="space-y-1.5">
-              <label className="block text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                Logistics Dispatch Note / Carrier Details (Optional)
-              </label>
-              <textarea
-                rows={3}
-                value={trackingNote}
-                onChange={(e) => setTrackingNote(e.target.value)}
-                placeholder="e.g. Dispatched via DHL Express (Airway Bill #9823412093). Estimated arrival Friday..."
-                className="w-full bg-background border border-input rounded-lg px-3.5 py-2 text-xs text-foreground focus:outline-none focus:ring-2 focus:ring-primary/30"
-              />
-            </div>
-
-            <div className="flex items-center justify-end gap-3 pt-4 border-t border-border">
+            {/* Action Buttons */}
+            <div className="flex items-center justify-end gap-3 pt-2 border-t border-border">
               <Button
                 variant="outline"
                 size="sm"
@@ -659,10 +898,10 @@ export const ShipmentTrackingPage: React.FC<ShipmentTrackingPageProps> = ({ onNa
                 variant="primary"
                 size="sm"
                 onClick={handleExecuteStatusUpdate}
-                disabled={isProcessing || targetStatus === (updatingRequest.shipmentStatus || 'approved')}
+                disabled={isProcessing}
                 leftIcon={<Truck className="w-3.5 h-3.5" />}
               >
-                {isProcessing ? 'Updating...' : `Transition to ${SHIPMENT_STATUSES.find(s => s.key === targetStatus)?.label}`}
+                {isProcessing ? 'Updating...' : `Advance to ${nextStatusConfig.label}`}
               </Button>
             </div>
           </div>
