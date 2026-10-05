@@ -1,19 +1,7 @@
 import { storage } from './storage';
 import {
-  INITIAL_ROLES,
-  INITIAL_USERS,
-  INITIAL_TEAMS,
-  INITIAL_REQUESTS,
-  INITIAL_FORMS,
-  INITIAL_FORM_ASSIGNMENTS,
-  INITIAL_NOTIFICATIONS,
-  INITIAL_AUDIT_LOGS,
   INITIAL_SETTINGS,
-  INITIAL_BUDGET_TRANSACTIONS,
-  INITIAL_ADDITIONAL_FIELDS,
-  INITIAL_COMPANIES,
-  INITIAL_WAREHOUSES,
-  INITIAL_CUSTOMERS
+  INITIAL_USERS
 } from './mockData';
 import { Role, Permission } from '../types/rbac';
 import { User } from '../types/user';
@@ -43,10 +31,15 @@ class DataService {
       const data = await api.getBootstrap();
       if (!data) return;
 
-      if (Array.isArray(data.roles) && data.roles.length) storage.set('roles', data.roles);
-      if (Array.isArray(data.users) && data.users.length) {
-        // The users table has no password column, so DB rows never carry one.
-        // Preserve the previously-known local/demo password instead of wiping it out.
+      // ── DB IS THE SINGLE SOURCE OF TRUTH ──────────────────────────────────────
+      // Always write DB state to localStorage — even empty arrays — so that
+      // clearing the DB immediately clears the UI without stale mock data showing.
+
+      // Roles: always sync from DB (empty DB = empty UI)
+      if (Array.isArray(data.roles)) storage.set('roles', data.roles);
+
+      // Users: always sync; preserve passwords (not stored in DB)
+      if (Array.isArray(data.users)) {
         const existingUsers = this.getUsers();
         const usersWithPasswords = data.users.map((u: User) => {
           const existing = existingUsers.find(eu => eu.id === u.id || eu.email?.toLowerCase() === u.email?.toLowerCase());
@@ -55,35 +48,23 @@ class DataService {
         });
         storage.set('users', usersWithPasswords);
       }
-      if (Array.isArray(data.teams) && data.teams.length) storage.set('teams', data.teams);
+
+      // Teams: always sync
+      if (Array.isArray(data.teams)) storage.set('teams', data.teams);
+
+      // Requests: always sync directly from database (DB is single source of truth)
       if (Array.isArray(data.requests)) {
-        // Smart non-destructive merge: preserve local requests that have not reached the DB yet
-        const localRequests = this.getRequests();
-        const dbIds = new Set(data.requests.map((r: RequestRecord) => r.id));
-        const unsyncedLocals = localRequests.filter(lr => !dbIds.has(lr.id));
-
-        // DB records take precedence for matching IDs; local unsynced records are kept
-        const mergedRequests = [...data.requests, ...unsyncedLocals];
-        storage.set('requests', mergedRequests);
-
-        // Re-attempt synchronization for any unsynced local requests in the background
-        if (unsyncedLocals.length > 0) {
-          unsyncedLocals.forEach(un => {
-            api.createRequest({
-              ...un,
-              requestDate: un.requestDate,
-              submittedByUserId: un.submittedByUserId,
-              submittedByUserName: un.submittedByUserName,
-              submittedByUserEmail: un.submittedByUserEmail
-            }).catch(() => {});
-          });
-        }
+        storage.set('requests', data.requests);
       }
-      if (Array.isArray(data.forms) && data.forms.length) storage.set('forms', data.forms);
-      if (Array.isArray(data.formAssignments) && data.formAssignments.length) storage.set('form_assignments', data.formAssignments);
-      if (Array.isArray(data.budgetTransactions) && data.budgetTransactions.length) storage.set('budget_transactions', data.budgetTransactions);
-      if (Array.isArray(data.notifications) && data.notifications.length) storage.set('notifications', data.notifications);
-      if (Array.isArray(data.auditLogs) && data.auditLogs.length) storage.set('audit_logs', data.auditLogs);
+
+      // Forms, assignments, transactions, notifications, audit logs: always sync
+      if (Array.isArray(data.forms)) storage.set('forms', data.forms);
+      if (Array.isArray(data.formAssignments)) storage.set('form_assignments', data.formAssignments);
+      if (Array.isArray(data.budgetTransactions)) storage.set('budget_transactions', data.budgetTransactions);
+      if (Array.isArray(data.notifications)) storage.set('notifications', data.notifications);
+      if (Array.isArray(data.auditLogs)) storage.set('audit_logs', data.auditLogs);
+
+      // Settings: merge DB settings with INITIAL defaults for fields not stored in DB
       if (data.settings) {
         const current = this.getSettings();
         const merged: SystemSettings = {
@@ -107,157 +88,40 @@ class DataService {
         };
         storage.set('settings', merged);
       }
+
+      // Additional fields, companies, warehouses, customers: always sync
       if (Array.isArray(data.additionalFields)) storage.set('additional_fields', data.additionalFields);
-      if (Array.isArray(data.companies) && data.companies.length) storage.set('companies', data.companies);
-      if (Array.isArray(data.warehouses) && data.warehouses.length) storage.set('warehouses', data.warehouses);
-      if (Array.isArray(data.customers) && data.customers.length) storage.set('customers', data.customers);
-      console.log('✨ Synchronized state with local PostgreSQL database (rdx_request_db)');
+      if (Array.isArray(data.companies)) storage.set('companies', data.companies);
+      if (Array.isArray(data.warehouses)) storage.set('warehouses', data.warehouses);
+      if (Array.isArray(data.customers)) storage.set('customers', data.customers);
+
+      console.log('✨ Synchronized state from database — DB is source of truth.');
     } catch (err) {
-      console.warn('Database sync skipped (offline or server starting)', err);
+      console.warn('Database sync skipped (offline or server starting):', err);
     }
   }
 
   private initStorage() {
     if (!storage.get('initialized', false)) {
-      storage.set('roles', INITIAL_ROLES);
-      storage.set('users', INITIAL_USERS);
-      storage.set('teams', INITIAL_TEAMS);
-      storage.set('requests', INITIAL_REQUESTS);
-      storage.set('forms', INITIAL_FORMS);
-      storage.set('form_assignments', INITIAL_FORM_ASSIGNMENTS);
+      // Start with empty arrays — DB is the source of truth.
+      // syncFromDatabase() will populate everything from the live database.
+      storage.set('roles', []);
+      storage.set('users', []);
+      storage.set('teams', []);
+      storage.set('requests', []);
+      storage.set('forms', []);
+      storage.set('form_assignments', []);
       storage.set('form_submissions', []);
-      storage.set('notifications', INITIAL_NOTIFICATIONS);
-      storage.set('audit_logs', INITIAL_AUDIT_LOGS);
-      storage.set('settings', INITIAL_SETTINGS);
-      storage.set('budget_transactions', INITIAL_BUDGET_TRANSACTIONS);
-      storage.set('additional_fields', INITIAL_ADDITIONAL_FIELDS);
-      storage.set('companies', INITIAL_COMPANIES);
-      storage.set('warehouses', INITIAL_WAREHOUSES);
-      storage.set('customers', INITIAL_CUSTOMERS);
-      storage.set('current_user_id', 'usr-1'); // Alexander Vance (Super Admin)
+      storage.set('notifications', []);
+      storage.set('audit_logs', []);
+      storage.set('settings', INITIAL_SETTINGS); // keep UI defaults like statusConfigs
+      storage.set('budget_transactions', []);
+      storage.set('additional_fields', []);
+      storage.set('companies', []);
+      storage.set('warehouses', []);
+      storage.set('customers', []);
       storage.set('initialized', true);
     }
-
-    // Schema v2 migration: if teams have old wrong field name (totalAllocatedBudget),
-    // reset them to fresh mock data so toLocaleString never crashes on undefined allocatedBudget
-    const storedTeams = storage.get<any[]>('teams', []);
-    if (storedTeams.length > 0 && storedTeams[0]?.totalAllocatedBudget !== undefined) {
-      console.log('🔄 Migrating stale team data (v1→v2 schema fix)...');
-      storage.set('teams', INITIAL_TEAMS);
-    }
-    // Also ensure any team missing allocatedBudget is patched with 0 (defensive)
-    const teams = storage.get<any[]>('teams', INITIAL_TEAMS);
-    const patched = teams.map(t => {
-      // Schema v3 migration: add team type (B2B/B2C) if missing
-      let teamType = t.type;
-      if (!teamType) {
-        const initMatch = INITIAL_TEAMS.find(it => it.id === t.id || it.name === t.name);
-        teamType = initMatch?.type || 'B2B';
-      }
-      return {
-        ...t,
-        type: teamType,
-        allocatedBudget: t.allocatedBudget ?? t.totalAllocatedBudget ?? 0,
-        spentBudget: t.spentBudget ?? 0,
-        remainingBudget: t.remainingBudget ?? Math.max(0, (t.allocatedBudget ?? t.totalAllocatedBudget ?? 0) - (t.spentBudget ?? 0)),
-        active: t.active ?? true,
-        memberCount: t.memberCount ?? 0,
-        currency: t.currency ?? '$',
-        code: t.code ?? 'TEAM',
-        leadName: t.leadName ?? '',
-      };
-    });
-    storage.set('teams', patched);
-
-    // Branding migration: force-patch stale names to RDX Request & Budget Management System
-    const currentSettings = storage.get<SystemSettings>('settings', INITIAL_SETTINGS);
-    if (
-      currentSettings?.branding?.companyName === 'OmniCorp Enterprise Systems' ||
-      currentSettings?.branding?.companyName === 'OmniCorp' ||
-      currentSettings?.branding?.appTitle === 'Enterprise Gift & Budget Management' ||
-      currentSettings?.branding?.appTitle === 'Gift & Budget Management System'
-    ) {
-      storage.set('settings', {
-        ...currentSettings,
-        branding: {
-          ...currentSettings.branding,
-          companyName: 'RDX',
-          appTitle: 'Request & Budget Management System',
-        }
-      });
-    }
-
-    // Role synchronization: ensure all 7 INITIAL_ROLES exist and system roles have full permissions
-    const storedRoles = storage.get<Role[]>('roles', INITIAL_ROLES);
-    const updatedRoles = INITIAL_ROLES.map(initRole => {
-      const existing = storedRoles.find(r => r.id === initRole.id || r.name === initRole.name);
-      if (!existing) return initRole;
-      if (existing.isSystem) {
-        return {
-          ...existing,
-          permissions: initRole.permissions,
-          color: initRole.color,
-          name: initRole.name,
-          description: initRole.description
-        };
-      }
-      return existing;
-    });
-    storedRoles.forEach(r => {
-      if (!updatedRoles.some(u => u.id === r.id)) {
-        updatedRoles.push(r);
-      }
-    });
-    storage.set('roles', updatedRoles);
-
-    // User synchronization: ensure all 7 INITIAL_USERS exist with credentials and assigned roles
-    const storedUsers = storage.get<User[]>('users', INITIAL_USERS);
-    const mergedUsers = [...storedUsers];
-    INITIAL_USERS.forEach(initUser => {
-      const idx = mergedUsers.findIndex(u => u.id === initUser.id || u.email.toLowerCase() === initUser.email.toLowerCase());
-      if (idx >= 0) {
-        mergedUsers[idx] = {
-          ...mergedUsers[idx],
-          password: initUser.password || 'admin@123',
-          roleId: initUser.roleId,
-          roleName: initUser.roleName
-        };
-      } else {
-        mergedUsers.push(initUser);
-      }
-    });
-    storage.set('users', mergedUsers);
-
-    // Company synchronization: ensure companies have the latest fields (companyIdNumber, legalId, location, currency)
-    const storedCompanies = storage.get<Company[]>('companies', INITIAL_COMPANIES);
-    const mergedCompanies = [...storedCompanies];
-    INITIAL_COMPANIES.forEach(initComp => {
-      const idx = mergedCompanies.findIndex(c => c.id === initComp.id || c.name === initComp.name);
-      if (idx >= 0) {
-        mergedCompanies[idx] = {
-          ...initComp,
-          ...mergedCompanies[idx],
-          companyIdNumber: mergedCompanies[idx].companyIdNumber || initComp.companyIdNumber || mergedCompanies[idx].shortCode,
-          legalId: mergedCompanies[idx].legalId || initComp.legalId || '',
-          location: mergedCompanies[idx].location || initComp.location || '',
-          defaultCurrency: mergedCompanies[idx].defaultCurrency || initComp.defaultCurrency || 'USD'
-        };
-      } else {
-        mergedCompanies.push(initComp);
-      }
-    });
-    storage.set('companies', mergedCompanies);
-
-    // Warehouse synchronization: ensure warehouses are decoupled from companies
-    const storedWarehouses = storage.get<Warehouse[]>('warehouses', INITIAL_WAREHOUSES);
-    const mergedWarehouses = [...storedWarehouses];
-    INITIAL_WAREHOUSES.forEach(initWh => {
-      const idx = mergedWarehouses.findIndex(w => w.id === initWh.id);
-      if (idx < 0) {
-        mergedWarehouses.push(initWh);
-      }
-    });
-    storage.set('warehouses', mergedWarehouses);
   }
 
 
@@ -295,12 +159,12 @@ class DataService {
   }
 
   public getAuditLogs(): AuditLog[] {
-    return storage.get<AuditLog[]>('audit_logs', INITIAL_AUDIT_LOGS);
+    return storage.get<AuditLog[]>('audit_logs', []);
   }
 
   // --- Notifications ---
   public getNotifications(): Notification[] {
-    return storage.get<Notification[]>('notifications', INITIAL_NOTIFICATIONS);
+    return storage.get<Notification[]>('notifications', []);
   }
 
   public notify(
@@ -357,9 +221,21 @@ class DataService {
 
   // --- Users & Session ---
   public getCurrentUser(): User {
-    const currentId = storage.get<string>('current_user_id', 'usr-1');
+    const currentId = storage.get<string>('current_user_id', 'usr-admin');
     const users = this.getUsers();
-    return users.find(u => u.id === currentId) || users[0];
+    return users.find(u => u.id === currentId) || users[0] || {
+      id: 'usr-admin',
+      name: 'Super Admin',
+      email: 'admin@rdx.com',
+      roleId: 'role-super-admin',
+      roleName: 'Super Admin',
+      department: 'Executive Management',
+      title: 'System Administrator',
+      status: 'active',
+      isActive: true,
+      allocatedBudget: 0,
+      spentBudget: 0
+    };
   }
 
   public setCurrentUser(userId: string) {
@@ -371,7 +247,7 @@ class DataService {
   }
 
   public getUsers(): User[] {
-    return storage.get<User[]>('users', INITIAL_USERS);
+    return storage.get<User[]>('users', []);
   }
 
   public saveUser(userData: Partial<User> & { name: string; email: string; roleId: string }, actor: User): User {
@@ -445,7 +321,7 @@ class DataService {
 
   // --- Roles & Dynamic RBAC ---
   public getRoles(): Role[] {
-    return storage.get<Role[]>('roles', INITIAL_ROLES);
+    return storage.get<Role[]>('roles', []);
   }
 
   public saveRole(roleData: Partial<Role> & { name: string; permissions: Permission[] }, actor: User): Role {
@@ -500,7 +376,7 @@ class DataService {
 
   // --- Companies (our side — issuing entities) ---
   public getCompanies(): Company[] {
-    return storage.get<Company[]>('companies', INITIAL_COMPANIES);
+    return storage.get<Company[]>('companies', []);
   }
 
   public saveCompany(companyData: Partial<Company> & { name: string }, actor: User): Company {
@@ -557,7 +433,7 @@ class DataService {
 
   // --- Warehouses (independent dispatch and fulfillment locations) ---
   public getWarehouses(): Warehouse[] {
-    return storage.get<Warehouse[]>('warehouses', INITIAL_WAREHOUSES);
+    return storage.get<Warehouse[]>('warehouses', []);
   }
 
   public saveWarehouse(warehouseData: Partial<Warehouse> & { name: string; companyId?: string }, actor: User): Warehouse {
@@ -608,7 +484,7 @@ class DataService {
 
   // --- Customers (receiver side) ---
   public getCustomers(): Customer[] {
-    return storage.get<Customer[]>('customers', INITIAL_CUSTOMERS);
+    return storage.get<Customer[]>('customers', []);
   }
 
   public saveCustomer(customerData: Partial<Customer> & { contactName: string }, actor: User): Customer {
@@ -661,7 +537,7 @@ class DataService {
 
   // --- Teams & Budgets ---
   public getTeams(): Team[] {
-    return storage.get<Team[]>('teams', INITIAL_TEAMS);
+    return storage.get<Team[]>('teams', []);
   }
 
   public saveTeam(teamData: Partial<Team> & { name: string; allocatedBudget: number }, actor: User): Team {
@@ -840,7 +716,7 @@ class DataService {
   }
 
   public getBudgetTransactions(teamId?: string): BudgetTransaction[] {
-    const txns = storage.get<BudgetTransaction[]>('budget_transactions', INITIAL_BUDGET_TRANSACTIONS);
+    const txns = storage.get<BudgetTransaction[]>('budget_transactions', []);
     if (teamId) {
       return txns.filter(t => t.teamId === teamId);
     }
@@ -859,14 +735,13 @@ class DataService {
     api.addBudgetTransaction(newTxn).catch(() => {});
   }
 
-  // --- Requests & Approvals ---
   public getRequests(filters?: {
     teamId?: string;
     status?: RequestStatus;
     search?: string;
     priority?: RequestPriority;
   }): RequestRecord[] {
-    let requests = storage.get<RequestRecord[]>('requests', INITIAL_REQUESTS);
+    let requests = storage.get<RequestRecord[]>('requests', []);
     if (!filters) return requests;
 
     if (filters.teamId) {
@@ -1541,12 +1416,7 @@ class DataService {
 
   // --- Dynamic Forms Builder ---
   public getForms(): FormSchema[] {
-    const forms = storage.get<FormSchema[]>('forms', INITIAL_FORMS);
-    if (!forms.some(f => f.id === 'form-std-sample-foc')) {
-      forms.unshift(INITIAL_FORMS[0]);
-      storage.set('forms', forms);
-    }
-    return forms;
+    return storage.get<FormSchema[]>('forms', []);
   }
 
   public getFormById(id: string): FormSchema | undefined {
@@ -1602,7 +1472,7 @@ class DataService {
   }
 
   public getFormAssignments(): FormAssignment[] {
-    return storage.get<FormAssignment[]>('form_assignments', INITIAL_FORM_ASSIGNMENTS);
+    return storage.get<FormAssignment[]>('form_assignments', []);
   }
 
   public assignForm(
@@ -1731,7 +1601,7 @@ class DataService {
 
   // --- Additional Fields (user-defined extra columns on the Requests tables) ---
   public getAdditionalFields(): AdditionalField[] {
-    return [...storage.get<AdditionalField[]>('additional_fields', INITIAL_ADDITIONAL_FIELDS)]
+    return [...storage.get<AdditionalField[]>('additional_fields', [])]
       .sort((a, b) => a.displayOrder - b.displayOrder);
   }
 
