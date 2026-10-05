@@ -1,7 +1,14 @@
 import { storage } from './storage';
 import {
+  INITIAL_ROLES,
+  INITIAL_USERS,
+  INITIAL_TEAMS,
+  INITIAL_FORMS,
+  INITIAL_FORM_ASSIGNMENTS,
   INITIAL_SETTINGS,
-  INITIAL_USERS
+  INITIAL_COMPANIES,
+  INITIAL_WAREHOUSES,
+  INITIAL_CUSTOMERS
 } from './mockData';
 import { Role, Permission } from '../types/rbac';
 import { User } from '../types/user';
@@ -102,26 +109,31 @@ class DataService {
   }
 
   private initStorage() {
+    // Only seed defaults on very first load (empty localStorage).
+    // syncFromDatabase() is the single source of truth once the DB is connected —
+    // do NOT merge mock data here on subsequent loads or it will override DB state.
     if (!storage.get('initialized', false)) {
-      // Start with empty arrays — DB is the source of truth.
-      // syncFromDatabase() will populate everything from the live database.
-      storage.set('roles', []);
-      storage.set('users', []);
-      storage.set('teams', []);
+      storage.set('roles', INITIAL_ROLES);
+      storage.set('users', INITIAL_USERS);
+      storage.set('teams', INITIAL_TEAMS);
       storage.set('requests', []);
-      storage.set('forms', []);
-      storage.set('form_assignments', []);
+      storage.set('forms', INITIAL_FORMS);
+      storage.set('form_assignments', INITIAL_FORM_ASSIGNMENTS);
       storage.set('form_submissions', []);
       storage.set('notifications', []);
       storage.set('audit_logs', []);
-      storage.set('settings', INITIAL_SETTINGS); // keep UI defaults like statusConfigs
+      storage.set('settings', INITIAL_SETTINGS);
       storage.set('budget_transactions', []);
       storage.set('additional_fields', []);
-      storage.set('companies', []);
-      storage.set('warehouses', []);
-      storage.set('customers', []);
+      storage.set('companies', INITIAL_COMPANIES);
+      storage.set('warehouses', INITIAL_WAREHOUSES);
+      storage.set('customers', INITIAL_CUSTOMERS);
+      storage.set('current_user_id', 'usr-1');
       storage.set('initialized', true);
     }
+    // NOTE: Role and user merging from INITIAL_* has been intentionally removed.
+    // syncFromDatabase() overwrites localStorage with DB state on every load,
+    // so forcing mock roles/users here would re-inject dummy data after a DB clear.
   }
 
 
@@ -221,21 +233,9 @@ class DataService {
 
   // --- Users & Session ---
   public getCurrentUser(): User {
-    const currentId = storage.get<string>('current_user_id', 'usr-admin');
+    const currentId = storage.get<string>('current_user_id', 'usr-1');
     const users = this.getUsers();
-    return users.find(u => u.id === currentId) || users[0] || {
-      id: 'usr-admin',
-      name: 'Super Admin',
-      email: 'admin@rdx.com',
-      roleId: 'role-super-admin',
-      roleName: 'Super Admin',
-      department: 'Executive Management',
-      title: 'System Administrator',
-      status: 'active',
-      isActive: true,
-      allocatedBudget: 0,
-      spentBudget: 0
-    };
+    return users.find(u => u.id === currentId) || users[0] || INITIAL_USERS[0];
   }
 
   public setCurrentUser(userId: string) {
@@ -247,7 +247,7 @@ class DataService {
   }
 
   public getUsers(): User[] {
-    return storage.get<User[]>('users', []);
+    return storage.get<User[]>('users', INITIAL_USERS);
   }
 
   public saveUser(userData: Partial<User> & { name: string; email: string; roleId: string }, actor: User): User {
@@ -321,7 +321,7 @@ class DataService {
 
   // --- Roles & Dynamic RBAC ---
   public getRoles(): Role[] {
-    return storage.get<Role[]>('roles', []);
+    return storage.get<Role[]>('roles', INITIAL_ROLES);
   }
 
   public saveRole(roleData: Partial<Role> & { name: string; permissions: Permission[] }, actor: User): Role {
@@ -376,7 +376,7 @@ class DataService {
 
   // --- Companies (our side — issuing entities) ---
   public getCompanies(): Company[] {
-    return storage.get<Company[]>('companies', []);
+    return storage.get<Company[]>('companies', INITIAL_COMPANIES);
   }
 
   public saveCompany(companyData: Partial<Company> & { name: string }, actor: User): Company {
@@ -433,7 +433,7 @@ class DataService {
 
   // --- Warehouses (independent dispatch and fulfillment locations) ---
   public getWarehouses(): Warehouse[] {
-    return storage.get<Warehouse[]>('warehouses', []);
+    return storage.get<Warehouse[]>('warehouses', INITIAL_WAREHOUSES);
   }
 
   public saveWarehouse(warehouseData: Partial<Warehouse> & { name: string; companyId?: string }, actor: User): Warehouse {
@@ -484,7 +484,7 @@ class DataService {
 
   // --- Customers (receiver side) ---
   public getCustomers(): Customer[] {
-    return storage.get<Customer[]>('customers', []);
+    return storage.get<Customer[]>('customers', INITIAL_CUSTOMERS);
   }
 
   public saveCustomer(customerData: Partial<Customer> & { contactName: string }, actor: User): Customer {
@@ -537,7 +537,7 @@ class DataService {
 
   // --- Teams & Budgets ---
   public getTeams(): Team[] {
-    return storage.get<Team[]>('teams', []);
+    return storage.get<Team[]>('teams', INITIAL_TEAMS);
   }
 
   public saveTeam(teamData: Partial<Team> & { name: string; allocatedBudget: number }, actor: User): Team {
@@ -1416,7 +1416,12 @@ class DataService {
 
   // --- Dynamic Forms Builder ---
   public getForms(): FormSchema[] {
-    return storage.get<FormSchema[]>('forms', []);
+    const forms = storage.get<FormSchema[]>('forms', INITIAL_FORMS);
+    if (!forms.some(f => f.id === 'form-std-sample-foc')) {
+      forms.unshift(INITIAL_FORMS[0]);
+      storage.set('forms', forms);
+    }
+    return forms;
   }
 
   public getFormById(id: string): FormSchema | undefined {
@@ -1472,7 +1477,7 @@ class DataService {
   }
 
   public getFormAssignments(): FormAssignment[] {
-    return storage.get<FormAssignment[]>('form_assignments', []);
+    return storage.get<FormAssignment[]>('form_assignments', INITIAL_FORM_ASSIGNMENTS);
   }
 
   public assignForm(
