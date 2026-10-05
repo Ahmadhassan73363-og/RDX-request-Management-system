@@ -46,7 +46,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ currentPath, onNavigate, onClo
 
   // Active team budget snippet
   const teams = dataService.getTeams();
-  const userTeam = teams.find(t => t.id === currentUser.teamId) || teams[0];
+  const userTeam = teams.find(t => t.id === currentUser?.teamId) || teams[0];
   const userTeamRemaining = userTeam ? (userTeam.remainingBudget || 0) : 0;
   const userTeamAllocated = userTeam ? (userTeam.allocatedBudget || 1) : 1;
   const userTeamSpent = userTeam ? (userTeam.spentBudget || 0) : 0;
@@ -203,7 +203,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ currentPath, onNavigate, onClo
         <div className="p-3 rounded-xl bg-card border border-border/80 shadow-xs space-y-2">
           <div className="flex items-center justify-between">
             <span className="text-[11px] font-bold text-foreground truncate">
-              {userTeam.name}
+              {userTeam?.name || 'My Team'}
             </span>
             <span className="text-[10px] font-mono font-semibold text-primary">
               ${userTeamRemaining.toLocaleString()} Left
