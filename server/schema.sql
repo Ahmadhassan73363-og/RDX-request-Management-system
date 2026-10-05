@@ -1,23 +1,11 @@
--- RDX Request Management System PostgreSQL Schema
--- Database: rdx_request_db
+-- RDX Full Schema Migration — Run from scratch on an empty or existing DB
+-- Safe to re-run: uses IF NOT EXISTS / DO NOTHING / ADD COLUMN IF NOT EXISTS
 
-DROP TABLE IF EXISTS audit_logs CASCADE;
-DROP TABLE IF EXISTS notifications CASCADE;
-DROP TABLE IF EXISTS budget_transactions CASCADE;
-DROP TABLE IF EXISTS form_submissions CASCADE;
-DROP TABLE IF EXISTS form_assignments CASCADE;
-DROP TABLE IF EXISTS forms CASCADE;
-DROP TABLE IF EXISTS requests CASCADE;
-DROP TABLE IF EXISTS users CASCADE;
-DROP TABLE IF EXISTS teams CASCADE;
-DROP TABLE IF EXISTS roles CASCADE;
-DROP TABLE IF EXISTS settings CASCADE;
-DROP TABLE IF EXISTS additional_fields CASCADE;
-DROP TABLE IF EXISTS warehouses CASCADE;
-DROP TABLE IF EXISTS customers CASCADE;
-DROP TABLE IF EXISTS companies CASCADE;
+-- =====================================================
+-- 1. CORE TABLES (create only if not exists)
+-- =====================================================
 
-CREATE TABLE roles (
+CREATE TABLE IF NOT EXISTS roles (
   id VARCHAR(50) PRIMARY KEY,
   name VARCHAR(100) NOT NULL,
   description TEXT,
@@ -27,7 +15,7 @@ CREATE TABLE roles (
   created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 
-CREATE TABLE companies (
+CREATE TABLE IF NOT EXISTS companies (
   id VARCHAR(50) PRIMARY KEY,
   name VARCHAR(150) NOT NULL,
   short_code VARCHAR(20),
@@ -47,7 +35,7 @@ CREATE TABLE companies (
   created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 
-CREATE TABLE warehouses (
+CREATE TABLE IF NOT EXISTS warehouses (
   id VARCHAR(50) PRIMARY KEY,
   name VARCHAR(150) NOT NULL,
   code VARCHAR(20),
@@ -61,7 +49,7 @@ CREATE TABLE warehouses (
   created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 
-CREATE TABLE customers (
+CREATE TABLE IF NOT EXISTS customers (
   id VARCHAR(50) PRIMARY KEY,
   contact_name VARCHAR(150) NOT NULL,
   company_name VARCHAR(150),
@@ -77,7 +65,7 @@ CREATE TABLE customers (
   created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 
-CREATE TABLE teams (
+CREATE TABLE IF NOT EXISTS teams (
   id VARCHAR(50) PRIMARY KEY,
   name VARCHAR(100) NOT NULL,
   description TEXT,
@@ -88,10 +76,13 @@ CREATE TABLE teams (
   spent_budget NUMERIC(15, 2) DEFAULT 0,
   fiscal_year VARCHAR(20),
   color VARCHAR(50),
+  is_active BOOLEAN DEFAULT true,
+  currency VARCHAR(20) DEFAULT 'GBP',
+  code VARCHAR(20),
   created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 
-CREATE TABLE users (
+CREATE TABLE IF NOT EXISTS users (
   id VARCHAR(50) PRIMARY KEY,
   name VARCHAR(100) NOT NULL,
   email VARCHAR(150) UNIQUE NOT NULL,
@@ -111,7 +102,7 @@ CREATE TABLE users (
   created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 
-CREATE TABLE requests (
+CREATE TABLE IF NOT EXISTS requests (
   id VARCHAR(50) PRIMARY KEY,
   tracking_number VARCHAR(50) UNIQUE NOT NULL,
   customer_name VARCHAR(150) NOT NULL,
@@ -143,13 +134,21 @@ CREATE TABLE requests (
   date DATE,
   department VARCHAR(100),
   agent_or_team_name VARCHAR(150),
+  agent_name VARCHAR(150),
+  agent_user_id VARCHAR(50),
+  our_company_name VARCHAR(150),
   business_name VARCHAR(150),
   type_of_foc VARCHAR(100),
+  category VARCHAR(50),
+  currency VARCHAR(20) DEFAULT 'GBP',
+  gbp_exchange_rate NUMERIC(10, 6),
   system_invoice_no VARCHAR(100),
   sample_sku VARCHAR(100),
   sample_sku_qty INT DEFAULT 0,
   sample_sku_cost_per_unit NUMERIC(15, 2) DEFAULT 0,
   sample_sku_total NUMERIC(15, 2) DEFAULT 0,
+  sample_sku_cost_per_unit_gbp NUMERIC(15, 2),
+  sample_sku_total_gbp NUMERIC(15, 2),
   sku_items JSONB DEFAULT '[]'::jsonb,
   custom_fields JSONB DEFAULT '{}'::jsonb,
   company_id VARCHAR(50) REFERENCES companies(id) ON DELETE SET NULL,
@@ -161,11 +160,12 @@ CREATE TABLE requests (
   form_title VARCHAR(200),
   shipment_status VARCHAR(50) DEFAULT 'pending',
   delivered_at TIMESTAMP WITH TIME ZONE,
+  delivered_currency_rates JSONB,
   created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
   updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 
-CREATE TABLE forms (
+CREATE TABLE IF NOT EXISTS forms (
   id VARCHAR(50) PRIMARY KEY,
   title VARCHAR(200) NOT NULL,
   description TEXT,
@@ -180,7 +180,7 @@ CREATE TABLE forms (
   updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 
-CREATE TABLE form_assignments (
+CREATE TABLE IF NOT EXISTS form_assignments (
   id VARCHAR(50) PRIMARY KEY,
   form_id VARCHAR(50) REFERENCES forms(id) ON DELETE CASCADE,
   target_type VARCHAR(50) NOT NULL,
@@ -194,7 +194,7 @@ CREATE TABLE form_assignments (
   assigned_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 
-CREATE TABLE form_submissions (
+CREATE TABLE IF NOT EXISTS form_submissions (
   id VARCHAR(50) PRIMARY KEY,
   form_id VARCHAR(50) REFERENCES forms(id) ON DELETE CASCADE,
   form_title VARCHAR(200),
@@ -207,7 +207,7 @@ CREATE TABLE form_submissions (
   submitted_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 
-CREATE TABLE budget_transactions (
+CREATE TABLE IF NOT EXISTS budget_transactions (
   id VARCHAR(50) PRIMARY KEY,
   team_id VARCHAR(50) REFERENCES teams(id) ON DELETE CASCADE,
   team_name VARCHAR(100),
@@ -223,7 +223,7 @@ CREATE TABLE budget_transactions (
   created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 
-CREATE TABLE notifications (
+CREATE TABLE IF NOT EXISTS notifications (
   id VARCHAR(50) PRIMARY KEY,
   user_id VARCHAR(50),
   title VARCHAR(255) NOT NULL,
@@ -236,7 +236,7 @@ CREATE TABLE notifications (
   created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 
-CREATE TABLE audit_logs (
+CREATE TABLE IF NOT EXISTS audit_logs (
   id VARCHAR(50) PRIMARY KEY,
   user_id VARCHAR(50),
   user_name VARCHAR(100),
@@ -253,19 +253,84 @@ CREATE TABLE audit_logs (
   timestamp TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 
-CREATE TABLE settings (
+CREATE TABLE IF NOT EXISTS settings (
   id VARCHAR(50) PRIMARY KEY DEFAULT 'global',
   data JSONB NOT NULL,
   updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 
--- User-defined extra columns that join the Requests tables (e.g. the Dashboard's
--- Recent Requests grid). Values themselves live in requests.custom_fields (JSONB),
--- keyed by field_key; this table only tracks which columns exist and their order.
-CREATE TABLE additional_fields (
+CREATE TABLE IF NOT EXISTS additional_fields (
   id VARCHAR(50) PRIMARY KEY,
   label VARCHAR(150) NOT NULL,
   field_key VARCHAR(100) NOT NULL,
   display_order INT DEFAULT 0,
   created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
+
+-- =====================================================
+-- 2. ADDITIVE MIGRATIONS (safe to re-run)
+-- =====================================================
+
+-- teams: soft-deactivation & currency & code
+ALTER TABLE teams ADD COLUMN IF NOT EXISTS is_active BOOLEAN DEFAULT true;
+ALTER TABLE teams ADD COLUMN IF NOT EXISTS currency VARCHAR(20) DEFAULT 'GBP';
+ALTER TABLE teams ADD COLUMN IF NOT EXISTS code VARCHAR(20);
+
+-- users: is_active (soft deactivate/activate)
+ALTER TABLE users ADD COLUMN IF NOT EXISTS is_active BOOLEAN DEFAULT true;
+
+-- companies: extra fields
+ALTER TABLE companies ADD COLUMN IF NOT EXISTS company_id_number VARCHAR(100);
+ALTER TABLE companies ADD COLUMN IF NOT EXISTS legal_id VARCHAR(100);
+ALTER TABLE companies ADD COLUMN IF NOT EXISTS location VARCHAR(200);
+
+-- requests: all extra fields
+ALTER TABLE requests ADD COLUMN IF NOT EXISTS form_id VARCHAR(50);
+ALTER TABLE requests ADD COLUMN IF NOT EXISTS form_title VARCHAR(200);
+ALTER TABLE requests ADD COLUMN IF NOT EXISTS sku_items JSONB DEFAULT '[]'::jsonb;
+ALTER TABLE requests ADD COLUMN IF NOT EXISTS custom_fields JSONB DEFAULT '{}'::jsonb;
+ALTER TABLE requests ADD COLUMN IF NOT EXISTS company_id VARCHAR(50);
+ALTER TABLE requests ADD COLUMN IF NOT EXISTS company_name VARCHAR(150);
+ALTER TABLE requests ADD COLUMN IF NOT EXISTS warehouse_id VARCHAR(50);
+ALTER TABLE requests ADD COLUMN IF NOT EXISTS warehouse_name VARCHAR(150);
+ALTER TABLE requests ADD COLUMN IF NOT EXISTS customer_id VARCHAR(50);
+ALTER TABLE requests ADD COLUMN IF NOT EXISTS delivered_currency_rates JSONB;
+ALTER TABLE requests ADD COLUMN IF NOT EXISTS agent_name VARCHAR(150);
+ALTER TABLE requests ADD COLUMN IF NOT EXISTS agent_user_id VARCHAR(50);
+ALTER TABLE requests ADD COLUMN IF NOT EXISTS our_company_name VARCHAR(150);
+ALTER TABLE requests ADD COLUMN IF NOT EXISTS category VARCHAR(50);
+ALTER TABLE requests ADD COLUMN IF NOT EXISTS currency VARCHAR(20) DEFAULT 'GBP';
+ALTER TABLE requests ADD COLUMN IF NOT EXISTS gbp_exchange_rate NUMERIC(10, 6);
+ALTER TABLE requests ADD COLUMN IF NOT EXISTS sample_sku_cost_per_unit_gbp NUMERIC(15, 2);
+ALTER TABLE requests ADD COLUMN IF NOT EXISTS sample_sku_total_gbp NUMERIC(15, 2);
+
+-- =====================================================
+-- 3. BUDGET ENFORCEMENT: DB-level constraint
+-- Budget amount on a request must not exceed the team's
+-- remaining budget. Enforced via CHECK is impractical for
+-- cross-table rules; we handle this at the API layer (see app.js).
+-- But we add a constraint to ensure budget_amount >= 0.
+-- =====================================================
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM information_schema.table_constraints
+    WHERE constraint_name = 'requests_budget_amount_non_negative'
+      AND table_name = 'requests'
+  ) THEN
+    ALTER TABLE requests ADD CONSTRAINT requests_budget_amount_non_negative
+      CHECK (budget_amount >= 0);
+  END IF;
+END$$;
+
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM information_schema.table_constraints
+    WHERE constraint_name = 'teams_budget_non_negative'
+      AND table_name = 'teams'
+  ) THEN
+    ALTER TABLE teams ADD CONSTRAINT teams_budget_non_negative
+      CHECK (total_allocated_budget >= 0 AND spent_budget >= 0);
+  END IF;
+END$$;

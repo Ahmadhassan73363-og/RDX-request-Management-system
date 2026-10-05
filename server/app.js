@@ -69,6 +69,11 @@ app.get('/api/health', async (req, res) => {
 // Helper to convert snake_case DB row to camelCase JS object
 function mapUser(row) {
   if (!row) return null;
+  // is_active column: true means active, false means deactivated
+  // Derive from is_active first; fall back to status field for legacy rows
+  const isActive = row.is_active !== null && row.is_active !== undefined
+    ? Boolean(row.is_active)
+    : row.status !== 'inactive';
   return {
     id: row.id,
     name: row.name,
@@ -82,6 +87,7 @@ function mapUser(row) {
     title: row.title,
     phone: row.phone,
     status: row.status,
+    isActive,
     lastLogin: row.last_login,
     allocatedBudget: parseFloat(row.allocated_budget || 0),
     spentBudget: parseFloat(row.spent_budget || 0),
@@ -424,10 +430,11 @@ app.post('/api/users', async (req, res) => {
   try {
     const roleId = u.roleId ? (await pool.query('SELECT id FROM roles WHERE id = $1', [u.roleId])).rows[0]?.id || null : null;
     const teamId = u.teamId ? (await pool.query('SELECT id FROM teams WHERE id = $1', [u.teamId])).rows[0]?.id || null : null;
+    const isActive = u.isActive !== undefined ? Boolean(u.isActive) : (u.status !== 'inactive');
 
     const result = await pool.query(
-      `INSERT INTO users (id, name, email, avatar, role_id, role_name, team_id, team_name, department, title, phone, status, allocated_budget, spent_budget, created_at)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
+      `INSERT INTO users (id, name, email, avatar, role_id, role_name, team_id, team_name, department, title, phone, status, is_active, allocated_budget, spent_budget, created_at)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)
        ON CONFLICT (id) DO UPDATE SET
          name = COALESCE(EXCLUDED.name, users.name),
          email = COALESCE(EXCLUDED.email, users.email),
@@ -440,6 +447,7 @@ app.post('/api/users', async (req, res) => {
          title = COALESCE(EXCLUDED.title, users.title),
          phone = COALESCE(EXCLUDED.phone, users.phone),
          status = COALESCE(EXCLUDED.status, users.status),
+         is_active = EXCLUDED.is_active,
          allocated_budget = COALESCE(EXCLUDED.allocated_budget, users.allocated_budget),
          spent_budget = COALESCE(EXCLUDED.spent_budget, users.spent_budget)
        RETURNING *`,
@@ -456,6 +464,7 @@ app.post('/api/users', async (req, res) => {
         u.title || null,
         u.phone || null,
         u.status || 'active',
+        isActive,
         u.allocatedBudget || 0,
         u.spentBudget || 0,
         u.createdAt || new Date().toISOString()
@@ -473,6 +482,8 @@ app.put('/api/users/:id', async (req, res) => {
   try {
     const roleId = u.roleId ? (await pool.query('SELECT id FROM roles WHERE id = $1', [u.roleId])).rows[0]?.id || null : null;
     const teamId = u.teamId ? (await pool.query('SELECT id FROM teams WHERE id = $1', [u.teamId])).rows[0]?.id || null : null;
+    // Support explicit activate/deactivate via isActive flag
+    const isActive = u.isActive !== undefined ? Boolean(u.isActive) : null;
 
     let result = await pool.query(
       `UPDATE users SET
@@ -487,8 +498,9 @@ app.put('/api/users/:id', async (req, res) => {
          title = COALESCE($10, title),
          phone = COALESCE($11, phone),
          status = COALESCE($12, status),
-         allocated_budget = COALESCE($13, allocated_budget),
-         spent_budget = COALESCE($14, spent_budget)
+         is_active = CASE WHEN $13::boolean IS NOT NULL THEN $13::boolean ELSE is_active END,
+         allocated_budget = COALESCE($14, allocated_budget),
+         spent_budget = COALESCE($15, spent_budget)
        WHERE id = $1
        RETURNING *`,
       [
@@ -504,15 +516,17 @@ app.put('/api/users/:id', async (req, res) => {
         u.title ?? null,
         u.phone ?? null,
         u.status ?? null,
+        isActive,
         u.allocatedBudget != null ? parseFloat(u.allocatedBudget) : null,
         u.spentBudget != null ? parseFloat(u.spentBudget) : null
       ]
     );
 
     if (!result.rows.length) {
+      const newIsActive = u.isActive !== undefined ? Boolean(u.isActive) : (u.status !== 'inactive');
       result = await pool.query(
-        `INSERT INTO users (id, name, email, avatar, role_id, role_name, team_id, team_name, department, title, phone, status, allocated_budget, spent_budget, created_at)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
+        `INSERT INTO users (id, name, email, avatar, role_id, role_name, team_id, team_name, department, title, phone, status, is_active, allocated_budget, spent_budget, created_at)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)
          RETURNING *`,
         [
           id,
@@ -527,6 +541,7 @@ app.put('/api/users/:id', async (req, res) => {
           u.title || null,
           u.phone || null,
           u.status || 'active',
+          newIsActive,
           u.allocatedBudget != null ? parseFloat(u.allocatedBudget) : 0,
           u.spentBudget != null ? parseFloat(u.spentBudget) : 0,
           u.createdAt || new Date().toISOString()
@@ -599,8 +614,43 @@ app.post('/api/roles', async (req, res) => {
   }
 });
 
+app.put('/api/roles/:id', async (req, res) => {
+  const { id } = req.params;
+  const r = req.body;
+  try {
+    const result = await pool.query(
+      `UPDATE roles SET
+         name = COALESCE($2, name),
+         description = COALESCE($3, description),
+         color = COALESCE($4, color),
+         permissions = COALESCE($5, permissions)
+       WHERE id = $1
+       RETURNING *`,
+      [
+        id,
+        r.name ?? null,
+        r.description ?? null,
+        r.color ?? null,
+        r.permissions ? JSON.stringify(r.permissions) : null
+      ]
+    );
+    if (!result.rows.length) {
+      return res.status(404).json({ error: 'Role not found.' });
+    }
+    res.json(mapRole(result.rows[0]));
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 app.delete('/api/roles/:id', async (req, res) => {
   try {
+    // Prevent deleting system roles that are required for the approval workflow
+    const target = await pool.query('SELECT is_system FROM roles WHERE id = $1', [req.params.id]);
+    if (!target.rows.length) return res.status(404).json({ error: 'Role not found.' });
+    if (target.rows[0].is_system) {
+      return res.status(409).json({ error: 'Cannot delete a system role. System roles are required for the approval workflow.' });
+    }
     await pool.query('DELETE FROM roles WHERE id = $1', [req.params.id]);
     res.json({ success: true });
   } catch (err) {
@@ -663,6 +713,55 @@ app.post('/api/companies', async (req, res) => {
       ]
     );
     res.status(201).json(mapCompany(result.rows[0]));
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.put('/api/companies/:id', async (req, res) => {
+  const { id } = req.params;
+  const c = req.body;
+  try {
+    const result = await pool.query(
+      `UPDATE companies SET
+         name = COALESCE($2, name),
+         short_code = COALESCE($3, short_code),
+         company_id_number = COALESCE($4, company_id_number),
+         legal_name = COALESCE($5, legal_name),
+         legal_id = COALESCE($6, legal_id),
+         logo_url = COALESCE($7, logo_url),
+         location = COALESCE($8, location),
+         address = COALESCE($9, address),
+         tax_id = COALESCE($10, tax_id),
+         contact_name = COALESCE($11, contact_name),
+         contact_email = COALESCE($12, contact_email),
+         contact_phone = COALESCE($13, contact_phone),
+         default_currency = COALESCE($14, default_currency),
+         color = COALESCE($15, color),
+         active = CASE WHEN $16::boolean IS NOT NULL THEN $16::boolean ELSE active END
+       WHERE id = $1
+       RETURNING *`,
+      [
+        id,
+        c.name ?? null,
+        c.shortCode ?? null,
+        c.companyIdNumber ?? null,
+        c.legalName ?? null,
+        c.legalId ?? null,
+        c.logoUrl ?? null,
+        c.location ?? null,
+        c.address ?? null,
+        c.taxId ?? null,
+        c.contactName ?? null,
+        c.contactEmail ?? null,
+        c.contactPhone ?? null,
+        c.defaultCurrency ?? null,
+        c.color ?? null,
+        c.active !== undefined ? Boolean(c.active) : null
+      ]
+    );
+    if (!result.rows.length) return res.status(404).json({ error: 'Company not found.' });
+    res.json(mapCompany(result.rows[0]));
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -733,6 +832,43 @@ app.post('/api/warehouses', async (req, res) => {
   }
 });
 
+app.put('/api/warehouses/:id', async (req, res) => {
+  const { id } = req.params;
+  const w = req.body;
+  try {
+    const result = await pool.query(
+      `UPDATE warehouses SET
+         name = COALESCE($2, name),
+         code = COALESCE($3, code),
+         company_id = COALESCE($4, company_id),
+         company_name = COALESCE($5, company_name),
+         address = COALESCE($6, address),
+         contact_name = COALESCE($7, contact_name),
+         contact_phone = COALESCE($8, contact_phone),
+         default_carrier = COALESCE($9, default_carrier),
+         active = CASE WHEN $10::boolean IS NOT NULL THEN $10::boolean ELSE active END
+       WHERE id = $1
+       RETURNING *`,
+      [
+        id,
+        w.name ?? null,
+        w.code ?? null,
+        w.companyId ?? null,
+        w.companyName ?? null,
+        w.address ?? null,
+        w.contactName ?? null,
+        w.contactPhone ?? null,
+        w.defaultCarrier ?? null,
+        w.active !== undefined ? Boolean(w.active) : null
+      ]
+    );
+    if (!result.rows.length) return res.status(404).json({ error: 'Warehouse not found.' });
+    res.json(mapWarehouse(result.rows[0]));
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 app.delete('/api/warehouses/:id', async (req, res) => {
   try {
     const dependents = await pool.query('SELECT COUNT(*) FROM requests WHERE warehouse_id = $1', [req.params.id]);
@@ -794,6 +930,47 @@ app.post('/api/customers', async (req, res) => {
       ]
     );
     res.status(201).json(mapCustomer(result.rows[0]));
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.put('/api/customers/:id', async (req, res) => {
+  const { id } = req.params;
+  const c = req.body;
+  try {
+    const result = await pool.query(
+      `UPDATE customers SET
+         contact_name = COALESCE($2, contact_name),
+         company_name = COALESCE($3, company_name),
+         email = COALESCE($4, email),
+         phone = COALESCE($5, phone),
+         shipping_address = COALESCE($6, shipping_address),
+         billing_same_as_shipping = COALESCE($7, billing_same_as_shipping),
+         billing_address = COALESCE($8, billing_address),
+         account_code = COALESCE($9, account_code),
+         tags = COALESCE($10, tags),
+         notes = COALESCE($11, notes),
+         active = CASE WHEN $12::boolean IS NOT NULL THEN $12::boolean ELSE active END
+       WHERE id = $1
+       RETURNING *`,
+      [
+        id,
+        c.contactName ?? null,
+        c.companyName ?? null,
+        c.email ?? null,
+        c.phone ?? null,
+        c.shippingAddress ?? null,
+        c.billingSameAsShipping ?? null,
+        c.billingAddress ?? null,
+        c.accountCode ?? null,
+        c.tags ? JSON.stringify(c.tags) : null,
+        c.notes ?? null,
+        c.active !== undefined ? Boolean(c.active) : null
+      ]
+    );
+    if (!result.rows.length) return res.status(404).json({ error: 'Customer not found.' });
+    res.json(mapCustomer(result.rows[0]));
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -981,6 +1158,33 @@ app.post('/api/requests', async (req, res) => {
     const teamId = reqData.teamId
       ? (await pool.query('SELECT id FROM teams WHERE id = $1', [reqData.teamId])).rows[0]?.id || null
       : null;
+
+    // ── BUDGET ENFORCEMENT ──────────────────────────────────────
+    // When a request is submitted (not just drafted), verify that
+    // the budget_amount does not exceed the team's remaining budget.
+    // An executive override (isOverride flag) bypasses this check.
+    const budgetAmountNew = parseFloat(reqData.budgetAmount) || parseFloat(reqData.sampleSkuTotal) || 0;
+    const isSubmitting = reqData.status && reqData.status !== 'draft';
+    if (teamId && isSubmitting && !reqData.isOverride && budgetAmountNew > 0) {
+      const teamRow = await pool.query(
+        'SELECT total_allocated_budget, spent_budget FROM teams WHERE id = $1',
+        [teamId]
+      );
+      if (teamRow.rows.length) {
+        const allocated = parseFloat(teamRow.rows[0].total_allocated_budget || 0);
+        const spent = parseFloat(teamRow.rows[0].spent_budget || 0);
+        const remaining = allocated - spent;
+        if (budgetAmountNew > remaining) {
+          return res.status(422).json({
+            error: `Budget exceeded: request amount £${budgetAmountNew.toFixed(2)} exceeds team remaining budget of £${remaining.toFixed(2)}. An executive override is required to proceed.`,
+            code: 'BUDGET_EXCEEDED',
+            remaining,
+            requested: budgetAmountNew
+          });
+        }
+      }
+    }
+    // ────────────────────────────────────────────────────────────
     const companyId = reqData.companyId
       ? (await pool.query('SELECT id FROM companies WHERE id = $1', [reqData.companyId])).rows[0]?.id || null
       : null;
