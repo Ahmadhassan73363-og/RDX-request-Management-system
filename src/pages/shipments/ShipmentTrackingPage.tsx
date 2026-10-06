@@ -32,6 +32,7 @@ import { Card, CardHeader, CardTitle, CardContent } from '../../components/commo
 import { Button } from '../../components/common/Button';
 import { Modal } from '../../components/common/Modal';
 import { useSyncedState } from '../../hooks/useSyncedState';
+import { getAdvanceLabel, validateShipmentAdvance } from '../../utils/shipmentFlow';
 
 interface ShipmentTrackingPageProps {
   onNavigateToRequest: (id: string) => void;
@@ -202,12 +203,9 @@ export const ShipmentTrackingPage: React.FC<ShipmentTrackingPageProps> = ({ onNa
 
     // Validate required fields based on the stage we're moving to
     const validTrackingIds = trackingIds.filter(id => id.trim());
-    if (nextStatus === 'dispatched' && validTrackingIds.length === 0) {
-      setActionError('At least one Courier Tracking ID is required before dispatching.');
-      return;
-    }
-    if ((nextStatus === 'dispatched' || nextStatus === 'in_process') && !shippingAddress.trim()) {
-      setActionError('Shipping address is required.');
+    const validationError = validateShipmentAdvance(nextStatus, { trackingIds: validTrackingIds, address: shippingAddress });
+    if (validationError) {
+      setActionError(validationError);
       return;
     }
 
@@ -480,7 +478,6 @@ export const ShipmentTrackingPage: React.FC<ShipmentTrackingPageProps> = ({ onNa
                     </div>
                   ) : (
                     columnItems.map(req => {
-                      const nextSt = getNextStatus(req.shipmentStatus as ShipmentStatus | undefined);
                       const isDelivered = (req.shipmentStatus || 'approved') === 'delivered';
                       return (
                         <div
@@ -569,9 +566,7 @@ export const ShipmentTrackingPage: React.FC<ShipmentTrackingPageProps> = ({ onNa
                                   onClick={() => handleOpenUpdateModal(req)}
                                   className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-primary/10 hover:bg-primary/20 text-primary font-semibold text-[11px] transition-colors"
                                 >
-                                  <span>
-                                    {nextSt ? `-> ${SHIPMENT_STATUSES.find(s => s.key === nextSt)?.label}` : 'Advance'}
-                                  </span>
+                                  <span>{getAdvanceLabel(req.shipmentStatus as ShipmentStatus | undefined)}</span>
                                   <ChevronRight className="w-3 h-3" />
                                 </button>
                               )
@@ -686,7 +681,7 @@ export const ShipmentTrackingPage: React.FC<ShipmentTrackingPageProps> = ({ onNa
                                   onClick={() => handleOpenUpdateModal(req)}
                                   leftIcon={<Truck className="w-3.5 h-3.5" />}
                                 >
-                                  Advance Status
+                                  {getAdvanceLabel(req.shipmentStatus as ShipmentStatus | undefined)}
                                 </Button>
                               )
                             ) : (

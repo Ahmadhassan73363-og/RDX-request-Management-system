@@ -18,7 +18,8 @@ import { Warehouse } from '../types/warehouse';
 import { Customer } from '../types/customer';
 import { RequestRecord, RequestStatus, RequestPriority, SkuItem, ShipmentStatus, AdditionalField } from '../types/request';
 import { FormSchema, FormAssignment, FormSubmission } from '../types/form';
-import { currencyService, normalizeLedgerCurrency } from './currencyService';
+import { currencyService, normalizeLedgerCurrency, ExchangeRatesData, FxSnapshot } from './currencyService';
+import { getNextShipmentStatus, SHIPMENT_STEP_LABELS } from '../utils/shipmentFlow';
 import { BudgetTransaction, BudgetActionType } from '../types/budget';
 import { Notification, NotificationType } from '../types/notification';
 import { AuditLog, AuditActionType } from '../types/audit';
@@ -787,10 +788,9 @@ class DataService {
       sampleSkuQty?: number;
       sampleSkuCostPerUnit?: number;
       sampleSkuTotal?: number;
-      sampleSkuCostPerUnitGbp?: number;
-      sampleSkuTotalGbp?: number;
-      gbpExchangeRate?: number;
       skuItems?: SkuItem[];
+      /** HMRC (or fallback) rates for the request date, resolved by the caller. */
+      fxRates?: ExchangeRatesData;
 
       customerName?: string;
       customerCompany?: string;
@@ -853,18 +853,25 @@ class DataService {
     // Team budgets are held and reported in GBP company-wide, so the amount actually
     // charged against a team's pool must be the GBP equivalent, not the raw entered
     // number — otherwise a $100 USD request would deduct 100 straight from a GBP pool.
+    // The conversion rate is HMRC's monthly rate for the month of the request date
+    // (resolved by the caller, which can await the network; the cache is the fallback).
+    // The rate used is saved with the request so the GBP figure never drifts.
     const nativeCurrency = normalizeLedgerCurrency(payload.currency);
-    const fxSnapshot = currencyService.getCachedRates();
-    const gbpExchangeRate = nativeCurrency === 'GBP' ? 1 : (fxSnapshot.rates[nativeCurrency] || 1);
-    const budgetAmount = nativeCurrency === 'GBP'
-      ? rawBudgetAmount
-      : Math.round(currencyService.toGbp(rawBudgetAmount, nativeCurrency, fxSnapshot) * 100) / 100;
-    const sampleSkuTotalGbp = nativeCurrency === 'GBP'
-      ? calculatedSkuTotal
-      : Math.round(currencyService.toGbp(calculatedSkuTotal, nativeCurrency, fxSnapshot) * 100) / 100;
-    const sampleSkuCostPerUnitGbp = nativeCurrency === 'GBP'
-      ? numCostPerUnit
-      : Math.round(currencyService.toGbp(numCostPerUnit, nativeCurrency, fxSnapshot) * 100) / 100;
+    const effectiveDate = payload.date || payload.deliveryTargetDate || new Date().toISOString().split('T')[0];
+    const fx = nativeCurrency === 'GBP' ? undefined : (payload.fxRates || currencyService.getCachedRatesForDate(effectiveDate));
+    const gbpExchangeRate = fx ? (fx.rates[nativeCurrency] || 1) : 1;
+    const budgetAmount = fx
+      ? Math.round(currencyService.toGbp(rawBudgetAmount, nativeCurrency, fx) * 100) / 100
+      : rawBudgetAmount;
+    const sampleSkuTotalGbp = fx
+      ? Math.round(currencyService.toGbp(calculatedSkuTotal, nativeCurrency, fx) * 100) / 100
+      : calculatedSkuTotal;
+    const sampleSkuCostPerUnitGbp = fx
+      ? Math.round(currencyService.toGbp(numCostPerUnit, nativeCurrency, fx) * 100) / 100
+      : numCostPerUnit;
+    const fxSnapshot: FxSnapshot | undefined = fx
+      ? { currency: nativeCurrency, rate: gbpExchangeRate, source: fx.source || 'default', period: fx.period, fetchedAt: fx.timestamp }
+      : undefined;
 
     const remainingBudget = team.remainingBudget;
     const budgetAfterApproval = remainingBudget - budgetAmount;
@@ -875,7 +882,6 @@ class DataService {
     const uniqueSuffix = Date.now().toString().slice(-4) + Math.floor(100 + Math.random() * 900);
     const trackingNumber = `REQ-${currentYear}-${uniqueSuffix}`;
 
-    const effectiveDate = payload.date || payload.deliveryTargetDate || new Date().toISOString().split('T')[0];
     // A linked Customer record's real contact/company name should win over the
     // generic Agent/Business Name fields — otherwise selecting a Customer in
     // NewRequestModal has no visible effect on the saved request.
@@ -945,7 +951,9 @@ class DataService {
       approvalHistory: [],
       formId: payload.formId,
       formTitle: payload.formTitle,
-      customFields: payload.customFields,
+      customFields: (payload.customFields || fxSnapshot)
+        ? { ...(payload.customFields || {}), ...(fxSnapshot ? { fxSnapshot } : {}) }
+        : undefined,
       companyId: payload.companyId,
       companyName: payload.companyName,
       warehouseId: payload.warehouseId,
@@ -1292,6 +1300,16 @@ class DataService {
     const req = requests.find(r => r.id === requestId);
     if (!req) throw new Error('Request not found');
 
+    // Shipments move forward exactly one step at a time and never backwards.
+    const allowedNext = getNextShipmentStatus(req.shipmentStatus);
+    if (status !== allowedNext) {
+      throw new Error(
+        allowedNext
+          ? `Shipment must advance one step at a time: next step is "${SHIPMENT_STEP_LABELS[allowedNext]}".`
+          : 'This shipment is already delivered and cannot be changed.'
+      );
+    }
+
     const previousStatus = req.shipmentStatus;
     req.shipmentStatus = status;
     req.updatedAt = new Date().toISOString();
@@ -1309,54 +1327,6 @@ class DataService {
 
     if (status === 'delivered') {
       req.deliveredAt = new Date().toISOString();
-    }
-
-    // When shipment is processed / delivered / dispatched, capture live real-time currency rates (GBP to USD, EUR, AED)
-    if (status === 'delivered' || status === 'dispatched' || status === 'in_process') {
-      // baseAmount is stored in the request's OWN currency, not GBP — convert it
-      // to its GBP equivalent first, or convertGbp below double-applies the rate.
-      const baseAmount = req.sampleSkuTotal || req.budgetAmount || req.requestValue || 0;
-      const nativeCurrency = normalizeLedgerCurrency(req.currency);
-      const baseAmountGbp = currencyService.toGbp(baseAmount, nativeCurrency);
-      const initialConverted = currencyService.convertGbp(baseAmountGbp);
-      req.deliveredCurrencyRates = {
-        fetchedAt: new Date().toISOString(),
-        usdRate: initialConverted.usdRate,
-        eurRate: initialConverted.eurRate,
-        aedRate: initialConverted.aedRate,
-        totalUsd: initialConverted.usd,
-        totalEur: initialConverted.eur,
-        totalAed: initialConverted.aed
-      };
-
-    // Fetch fresh live rates from real-time API asynchronously and persist.
-      // Guard against race condition: only write if the request status hasn't changed
-      // since this closure was created (i.e., no other update ran in the meantime).
-      const capturedStatus = status;
-      const capturedRequestId = req.id;
-      currencyService.getLiveRates(true).then(freshRates => {
-        const freshBaseAmountGbp = currencyService.toGbp(baseAmount, nativeCurrency, freshRates);
-        const freshConverted = currencyService.convertGbp(freshBaseAmountGbp, freshRates);
-        const freshRatePayload = {
-          fetchedAt: freshRates.timestamp,
-          usdRate: freshConverted.usdRate,
-          eurRate: freshConverted.eurRate,
-          aedRate: freshConverted.aedRate,
-          totalUsd: freshConverted.usd,
-          totalEur: freshConverted.eur,
-          totalAed: freshConverted.aed
-        };
-        // Re-read current state to avoid overwriting newer updates
-        const currentReqs = this.getRequests();
-        const found = currentReqs.find(r => r.id === capturedRequestId);
-        if (found && found.shipmentStatus === capturedStatus) {
-          found.deliveredCurrencyRates = freshRatePayload;
-          storage.set('requests', currentReqs);
-          api.updateRequest(capturedRequestId, { deliveredCurrencyRates: freshRatePayload }).catch(() => {});
-        }
-      }).catch(err => {
-        console.warn('[Forex Sync] Async live exchange rate fetch error:', err);
-      });
     }
 
     const statusLabels: Record<ShipmentStatus, string> = {
@@ -1385,7 +1355,6 @@ class DataService {
       shipmentStatus: req.shipmentStatus,
       deliveredAt: req.deliveredAt,
       comments: req.comments,
-      deliveredCurrencyRates: req.deliveredCurrencyRates,
       shipmentTrackingIds: req.shipmentTrackingIds,
       shipmentAddress: req.shipmentAddress,
       shipmentDate: req.shipmentDate,

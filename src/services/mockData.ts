@@ -949,7 +949,7 @@ export const INITIAL_FORMS: FormSchema[] = [
         id: 'f-biz',
         type: 'text',
         name: 'businessName',
-        label: 'Business Name',
+        label: 'Recipient',
         placeholder: 'e.g. Acme Corporation',
         required: true
       },

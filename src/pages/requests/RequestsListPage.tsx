@@ -97,7 +97,7 @@ export const RequestsListPage: React.FC<RequestsListPageProps> = ({
   const handleExportExcel = async () => {
     setIsExporting(true);
     try {
-      const headers = ['Date', 'Agent Name', 'Business Name', 'Category (Sample/Request)', 'Invoice No', 'Sample SKU', 'Total Quantity', 'Per Unit Cost', 'Total Cost', 'Status', 'Tracking #', 'Priority'];
+      const headers = ['Date', 'Agent Name', 'Recipient', 'Category (Sample/Request)', 'Invoice No', 'Sample SKU', 'Total Quantity', 'Per Unit Cost', 'Total Cost', 'Status', 'Tracking #', 'Priority'];
       const rows = filteredRequests.map(r => [
         r.date || r.requestDate || '',
         r.agentOrTeamName || r.customerName || r.submittedByUserName || '',
@@ -307,7 +307,7 @@ export const RequestsListPage: React.FC<RequestsListPageProps> = ({
                 <tr className="border-b border-border text-[11px] font-semibold text-muted-foreground uppercase tracking-wider bg-muted/20">
                   <th className="p-3.5 pl-4 text-primary font-bold">Date</th>
                   <th className="p-3.5 hidden sm:table-cell">Agent Name</th>
-                  <th className="p-3.5">Business Name</th>
+                  <th className="p-3.5">Recipient</th>
                   <th className="p-3.5">Category</th>
                   <th className="p-3.5 hidden md:table-cell">Invoice No</th>
                   <th className="p-3.5 hidden md:table-cell">Sample SKU</th>

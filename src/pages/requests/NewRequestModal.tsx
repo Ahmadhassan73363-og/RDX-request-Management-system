@@ -21,6 +21,7 @@ import { SearchableSelect } from '../../components/common/SearchableSelect';
 import { SignaturePad } from '../../components/common/SignaturePad';
 import { useAuth } from '../../context/AuthContext';
 import { dataService } from '../../services/dataService';
+import { currencyService, ExchangeRatesData, normalizeLedgerCurrency, describeRateSource } from '../../services/currencyService';
 import { RequestPriority, SkuItem } from '../../types/request';
 import { FormSchema, FormField } from '../../types/form';
 import { COMPANY_CURRENCIES, getCurrencySymbol } from '../../types/company';
@@ -44,7 +45,6 @@ export const NewRequestModal: React.FC<NewRequestModalProps> = ({ isOpen, onClos
   const [companies, setCompanies] = useState(() => dataService.getCompanies().filter(c => c.active));
   const [allWarehouses, setAllWarehouses] = useState(() => dataService.getWarehouses().filter(w => w.active));
   const [customers, setCustomers] = useState(() => dataService.getCustomers().filter(c => c.active));
-  const [allUsers, setAllUsers] = useState(() => dataService.getUsers().filter(u => u.status === 'active'));
 
   // Company / Warehouse / Customer
   const [companyId, setCompanyId] = useState(() => dataService.getCompanies().filter(c => c.active)[0]?.id || '');
@@ -68,13 +68,11 @@ export const NewRequestModal: React.FC<NewRequestModalProps> = ({ isOpen, onClos
       const activeCompanies = dataService.getCompanies().filter(c => c.active);
       const activeWarehouses = dataService.getWarehouses().filter(w => w.active);
       const activeCustomers = dataService.getCustomers().filter(c => c.active);
-      const activeUsers = dataService.getUsers().filter(u => u.status === 'active');
 
       setTeams(activeTeams);
       setCompanies(activeCompanies);
       setAllWarehouses(activeWarehouses);
       setCustomers(activeCustomers);
-      setAllUsers(activeUsers);
 
       setCompanyId(prev => (prev && activeCompanies.some(c => c.id === prev)) ? prev : (activeCompanies[0]?.id || ''));
       setWarehouseId(prev => (prev && activeWarehouses.some(w => w.id === prev)) ? prev : (activeWarehouses[0]?.id || ''));
@@ -99,15 +97,15 @@ export const NewRequestModal: React.FC<NewRequestModalProps> = ({ isOpen, onClos
   const [date, setDate] = useState(() => new Date().toISOString().split('T')[0]);
   // 2. Team
   const [teamId, setTeamId] = useState(currentUser.teamId || teams[0]?.id || '');
-  // 3. Agent Name (staff member, searchable per team)
-  const [agentUserId, setAgentUserId] = useState(currentUser.id || '');
-  const [agentName, setAgentName] = useState(currentUser.name || '');
+  // 3. Agent: always the logged-in user generating the request
+  const agentUserId = currentUser.id;
+  const agentName = currentUser.name;
   // 4. Our Company Name (auto-filled from issuing company)
   const [ourCompanyName, setOurCompanyName] = useState(() => {
     const firstCo = dataService.getCompanies().filter(c => c.active)[0];
     return firstCo?.name || '';
   });
-  // 5. Business Name (customer side)
+  // 5. Recipient (customer side)
   const [businessName, setBusinessName] = useState('');
   // 6. Category: Sample or Gift
   const [category, setCategory] = useState<'Sample' | 'Gift'>('Sample');
@@ -118,6 +116,22 @@ export const NewRequestModal: React.FC<NewRequestModalProps> = ({ isOpen, onClos
   const selectedCompanyObj = companies.find(c => c.id === companyId);
   const [currency, setCurrency] = useState<string>('GBP');
 
+  // HMRC monthly rates for the request date (only needed when the currency isn't GBP)
+  const [fx, setFx] = useState<ExchangeRatesData | null>(null);
+  const [fxLoading, setFxLoading] = useState(false);
+  useEffect(() => {
+    if (normalizeLedgerCurrency(currency) === 'GBP') {
+      setFx(null);
+      return;
+    }
+    let cancelled = false;
+    setFxLoading(true);
+    currencyService.getRatesForDate(date)
+      .then(r => { if (!cancelled) setFx(r); })
+      .finally(() => { if (!cancelled) setFxLoading(false); });
+    return () => { cancelled = true; };
+  }, [currency, date]);
+
   // Department (kept for compatibility)
   const [department, setDepartment] = useState(currentUser.department || 'Commercial Sales');
   // Priority
@@ -125,30 +139,6 @@ export const NewRequestModal: React.FC<NewRequestModalProps> = ({ isOpen, onClos
 
   // Derived: selected team object
   const selectedTeam = useMemo(() => teams.find(t => t.id === teamId), [teams, teamId]);
-
-  // Derived: staff members belonging to selected team (users with matching teamId)
-  const teamStaffMembers = useMemo(() => {
-    if (!teamId) return allUsers;
-    return allUsers.filter(u => u.teamId === teamId || u.id === currentUser.id);
-  }, [teamId, allUsers, currentUser.id]);
-
-  // When team changes, reset agent if current agent not in new team
-  useEffect(() => {
-    if (teamId && agentUserId) {
-      const inTeam = teamStaffMembers.some(u => u.id === agentUserId);
-      if (!inTeam) {
-        // Try to keep current user if they're in the list
-        const currentInTeam = teamStaffMembers.find(u => u.id === currentUser.id);
-        if (currentInTeam) {
-          setAgentUserId(currentUser.id);
-          setAgentName(currentUser.name);
-        } else if (teamStaffMembers.length > 0) {
-          setAgentUserId(teamStaffMembers[0].id);
-          setAgentName(teamStaffMembers[0].name);
-        }
-      }
-    }
-  }, [teamId]);
 
   // When companyId changes, update ourCompanyName and default the currency to
   // that company's currency (the user can still override it afterwards).
@@ -159,12 +149,6 @@ export const NewRequestModal: React.FC<NewRequestModalProps> = ({ isOpen, onClos
       setCurrency(co.defaultCurrency || 'GBP');
     }
   }, [companyId, companies]);
-
-  const handleAgentChange = (userId: string) => {
-    setAgentUserId(userId);
-    const user = allUsers.find(u => u.id === userId);
-    setAgentName(user?.name || '');
-  };
 
   const handleCustomerChange = (newCustomerId: string) => {
     setCustomerId(newCustomerId);
@@ -286,12 +270,18 @@ export const NewRequestModal: React.FC<NewRequestModalProps> = ({ isOpen, onClos
   const totalSkuQty = calculatedSkuItems.reduce((acc, item) => acc + (Number(item.sampleSkuQty) || 0), 0);
   const grandSkuTotal = Math.round(calculatedSkuItems.reduce((acc, item) => acc + (item.sampleSkuTotal || 0), 0) * 100) / 100;
 
+  // Team budgets are held in GBP, so a non-GBP total is compared at its GBP equivalent
+  // (HMRC monthly rate for the request date) — never as the raw foreign-currency number.
+  const nativeCode = normalizeLedgerCurrency(currency);
+  const fxRate = nativeCode === 'GBP' ? 1 : (fx || currencyService.getCachedRatesForDate(date)).rates[nativeCode];
+  const grandTotalGbp = nativeCode === 'GBP' ? grandSkuTotal : Math.round((grandSkuTotal / (fxRate || 1)) * 100) / 100;
+
   // Selected team balance check
   const currentRemaining = selectedTeam ? selectedTeam.remainingBudget : 0;
-  const projectedBalance = currentRemaining - grandSkuTotal;
+  const projectedBalance = currentRemaining - grandTotalGbp;
   const isOverBudget = projectedBalance < 0;
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
 
@@ -314,7 +304,7 @@ export const NewRequestModal: React.FC<NewRequestModalProps> = ({ isOpen, onClos
         return;
       }
       if (!businessName.trim()) {
-        setError('Please fill in the Business Name (customer/recipient)');
+        setError('Please fill in the Recipient');
         return;
       }
       if (!ourCompanyName.trim()) {
@@ -340,8 +330,12 @@ export const NewRequestModal: React.FC<NewRequestModalProps> = ({ isOpen, onClos
       setIsSubmitting(true);
       try {
         const primarySku = calculatedSkuItems.map(s => s.sampleSku).filter(Boolean).join(', ');
+        // Resolve the HMRC rate for the request's month before saving, so the GBP figure
+        // charged to the team is converted at it (cached after the first fetch).
+        const fxRates = nativeCode === 'GBP' ? undefined : await currencyService.getRatesForDate(date);
         const created = dataService.createRequest(
           {
+            fxRates,
             formId: selectedForm?.id || 'form-std-sample-foc',
             formTitle: selectedForm?.title || 'Standard Sample & FOC Request Form',
             customFields: {
@@ -508,7 +502,7 @@ export const NewRequestModal: React.FC<NewRequestModalProps> = ({ isOpen, onClos
       title={
         <div className="flex items-center gap-2">
           <FileText className="w-5 h-5 text-primary" />
-          <span>New Free / Sample Item Request</span>
+          <span>New Request Foam</span>
         </div>
       }
       description="Submit a Free of Cost (FOC) product, promotional sample or gift request for multi-level review and budget tracking"
@@ -577,14 +571,6 @@ export const NewRequestModal: React.FC<NewRequestModalProps> = ({ isOpen, onClos
               helperText={allWarehouses.length === 0 ? 'No warehouses available' : undefined}
             />
           </div>
-          {/* Our Company Name (editable override) */}
-          <Input
-            label="Our Company Name (on document) *"
-            placeholder="e.g. RDX Global Holdings"
-            value={ourCompanyName}
-            onChange={(e) => setOurCompanyName(e.target.value)}
-            required
-          />
         </div>
 
         {/* 2. DYNAMIC FIELDS OR DEFAULT STANDARD FORM */}
@@ -626,14 +612,14 @@ export const NewRequestModal: React.FC<NewRequestModalProps> = ({ isOpen, onClos
                     <optgroup label="── B2B Teams ──">
                       {teams.filter(t => t.type === 'B2B').map(t => (
                         <option key={t.id} value={t.id}>
-                          {t.name} · B2B (${(t.remainingBudget || 0).toLocaleString()} left)
+                          {t.name} · B2B (£{(t.remainingBudget || 0).toLocaleString()} left)
                         </option>
                       ))}
                     </optgroup>
                     <optgroup label="── B2C Teams ──">
                       {teams.filter(t => t.type === 'B2C').map(t => (
                         <option key={t.id} value={t.id}>
-                          {t.name} · B2C (${(t.remainingBudget || 0).toLocaleString()} left)
+                          {t.name} · B2C (£{(t.remainingBudget || 0).toLocaleString()} left)
                         </option>
                       ))}
                     </optgroup>
@@ -643,17 +629,13 @@ export const NewRequestModal: React.FC<NewRequestModalProps> = ({ isOpen, onClos
                   </select>
                 </div>
 
-                {/* Agent / Staff Member - searchable, filtered by team */}
-                <SearchableSelect
-                  label="Agent Name (Staff Member) *"
-                  value={agentUserId}
-                  onChange={handleAgentChange}
-                  options={teamStaffMembers.map(u => ({
-                    label: `${u.name}${u.title ? ` — ${u.title}` : ''}`,
-                    value: u.id
-                  }))}
-                  emptyLabel="Type to search staff..."
-                  helperText={selectedTeam ? `Showing ${teamStaffMembers.length} member(s) from ${selectedTeam.name}` : 'Select a team first to filter members'}
+                {/* Agent: always the logged-in user generating the request */}
+                <Input
+                  label="Agent Name *"
+                  value={agentName}
+                  readOnly
+                  disabled
+                  helperText="You — the request is submitted under your name"
                 />
               </div>
 
@@ -724,10 +706,10 @@ export const NewRequestModal: React.FC<NewRequestModalProps> = ({ isOpen, onClos
                 </div>
               </div>
 
-              {/* Row 2: Business Name & System Invoice */}
+              {/* Row 2: Recipient & System Invoice */}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <SearchableSelect
-                  label="Business Name (Customer) *"
+                  label="Recipient (Customer) *"
                   value={customerId}
                   onChange={(val) => handleCustomerChange(val)}
                   options={customers.map(c => ({ label: `${c.contactName} (${c.companyName})`, value: c.id }))}
@@ -737,7 +719,7 @@ export const NewRequestModal: React.FC<NewRequestModalProps> = ({ isOpen, onClos
                 {/* If no customer selected, allow manual entry */}
                 {!customerId && (
                   <Input
-                    label="Business Name (manual) *"
+                    label="Recipient (Manual) *"
                     placeholder="e.g. Acme Corporation"
                     value={businessName}
                     onChange={(e) => setBusinessName(e.target.value)}
@@ -746,7 +728,7 @@ export const NewRequestModal: React.FC<NewRequestModalProps> = ({ isOpen, onClos
                 )}
                 {customerId && (
                   <Input
-                    label="Confirmed Business Name"
+                    label="Confirmed Recipient"
                     value={businessName}
                     onChange={(e) => setBusinessName(e.target.value)}
                     helperText="Auto-filled · editable"
@@ -772,7 +754,7 @@ export const NewRequestModal: React.FC<NewRequestModalProps> = ({ isOpen, onClos
                 <div className="flex items-center gap-1.5">
                   <Calculator className="w-4 h-4 text-primary" />
                   <span className="text-xs font-bold text-foreground">
-                    Sample SKU Calculator ({skuRows.length})
+                   SKU Calculator ({skuRows.length})
                   </span>
                 </div>
 
@@ -904,6 +886,18 @@ export const NewRequestModal: React.FC<NewRequestModalProps> = ({ isOpen, onClos
                   <div className="text-xl font-extrabold font-mono text-primary">
                     {currencySymbol}{grandSkuTotal.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                   </div>
+                  {nativeCode !== 'GBP' && (
+                    <div className="mt-1.5 space-y-0.5">
+                      <div className="text-sm font-bold font-mono text-foreground">
+                        ≈ £{grandTotalGbp.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} GBP
+                      </div>
+                      <div className="text-[10px] text-muted-foreground">
+                        {fxLoading || !fx
+                          ? 'Loading HMRC exchange rate…'
+                          : `1 ${nativeCode} = £${(1 / (fx.rates[nativeCode] || 1)).toFixed(4)} · ${describeRateSource(fx.source || 'default', fx.period)}`}
+                      </div>
+                    </div>
+                  )}
                 </div>
                 <div className="text-xs text-muted-foreground text-right">
                   <span className="font-bold text-foreground">{totalSkuQty}</span> total unit{totalSkuQty !== 1 ? 's' : ''} across <span className="font-bold text-foreground">{skuRows.length}</span> SKU{skuRows.length !== 1 ? 's' : ''}
@@ -923,12 +917,12 @@ export const NewRequestModal: React.FC<NewRequestModalProps> = ({ isOpen, onClos
                         selectedTeam.type === 'B2B' ? 'bg-blue-500/15 text-blue-600 dark:text-blue-400' : 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400'
                       }`}>{selectedTeam.type}</span>
                     </span>
-                    <span>Balance: <strong>${(currentRemaining || 0).toLocaleString()}</strong></span>
+                    <span>Balance: <strong>£{(currentRemaining || 0).toLocaleString()}</strong></span>
                   </div>
                   <div className="flex items-center justify-between text-[11px]">
                     <span>After approval:</span>
                     <span className="font-mono font-bold">
-                      -{currencySymbol}{grandSkuTotal.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} → Projected: ${(projectedBalance || 0).toLocaleString()}
+                      -£{grandTotalGbp.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} → Projected: £{(projectedBalance || 0).toLocaleString(undefined, { maximumFractionDigits: 2 })}
                     </span>
                   </div>
                   {isOverBudget && (
@@ -941,16 +935,7 @@ export const NewRequestModal: React.FC<NewRequestModalProps> = ({ isOpen, onClos
               )}
             </div>
 
-            {/* Conditions Reminder */}
-            <div className="p-3 rounded-xl bg-amber-500/8 border border-amber-500/25 text-[11px] text-amber-700 dark:text-amber-400 space-y-1">
-              <p className="font-bold flex items-center gap-1.5">
-                <Info className="w-3.5 h-3.5 shrink-0" /> Conditions for Free / Sample Items
-              </p>
-              <ul className="list-disc ml-4 space-y-0.5">
-                <li>The selected free/sample item must <strong>NOT</strong> be the same item already present in the current order.</li>
-                <li>Multiple sizes & colors of the same sample <strong>cannot</strong> be sent together.</li>
-              </ul>
-            </div>
+           
 
             {/* Business Rationale / Comments */}
             <div className="space-y-1.5">
@@ -994,14 +979,14 @@ export const NewRequestModal: React.FC<NewRequestModalProps> = ({ isOpen, onClos
                     <optgroup label="── B2B Teams ──">
                       {teams.filter(t => t.type === 'B2B').map(t => (
                         <option key={t.id} value={t.id}>
-                          {t.name} · B2B (${(t.remainingBudget || 0).toLocaleString()} left)
+                          {t.name} · B2B (£{(t.remainingBudget || 0).toLocaleString()} left)
                         </option>
                       ))}
                     </optgroup>
                     <optgroup label="── B2C Teams ──">
                       {teams.filter(t => t.type === 'B2C').map(t => (
                         <option key={t.id} value={t.id}>
-                          {t.name} · B2C (${(t.remainingBudget || 0).toLocaleString()} left)
+                          {t.name} · B2C (£{(t.remainingBudget || 0).toLocaleString()} left)
                         </option>
                       ))}
                     </optgroup>
@@ -1188,7 +1173,7 @@ export const NewRequestModal: React.FC<NewRequestModalProps> = ({ isOpen, onClos
             Cancel
           </Button>
           <Button type="submit" variant="primary" isLoading={isSubmitting}>
-            Submit for Multi-Level Review
+            Submit 
           </Button>
         </div>
       </form>

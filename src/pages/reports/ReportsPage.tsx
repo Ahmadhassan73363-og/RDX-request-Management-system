@@ -4,11 +4,10 @@ import {
   Download,
   Filter,
   FileSpreadsheet,
-  RefreshCw,
   Globe
 } from 'lucide-react';
 import { dataService } from '../../services/dataService';
-import { currencyService, ExchangeRatesData, normalizeLedgerCurrency } from '../../services/currencyService';
+import { currencyService, ExchangeRatesData, FxSnapshot, normalizeLedgerCurrency, describeRateSource } from '../../services/currencyService';
 import { Card, CardHeader, CardTitle, CardContent } from '../../components/common/Card';
 import { Button } from '../../components/common/Button';
 import { exportToExcel } from '../../utils/exportExcel';
@@ -21,26 +20,13 @@ export const ReportsPage: React.FC = () => {
   const [teams] = useSyncedState(() => dataService.getTeams());
   const [users] = useSyncedState(() => dataService.getUsers());
 
-  // Real-time Forex State
-  const [fxRates, setFxRates] = useState<ExchangeRatesData>(() => currencyService.getCachedRates());
-  const [isLoadingFx, setIsLoadingFx] = useState(false);
-  const [fxTimestamp, setFxTimestamp] = useState<string>(() => fxRates.timestamp);
-
-  const fetchLiveFx = async (force = false) => {
-    setIsLoadingFx(true);
-    try {
-      const data = await currencyService.getLiveRates(force);
-      setFxRates(data);
-      setFxTimestamp(data.timestamp);
-    } catch (err) {
-      console.warn('Failed to refresh live FX rates:', err);
-    } finally {
-      setIsLoadingFx(false);
-    }
-  };
+  // Only used for older requests that predate saved rates: HMRC's latest published month.
+  const [fxRates, setFxRates] = useState<ExchangeRatesData>(() => currencyService.getCachedRatesForDate());
 
   useEffect(() => {
-    fetchLiveFx();
+    let cancelled = false;
+    currencyService.getRatesForDate().then(r => { if (!cancelled) setFxRates(r); });
+    return () => { cancelled = true; };
   }, []);
 
   // Filters state
@@ -61,14 +47,14 @@ export const ReportsPage: React.FC = () => {
     });
   }, [allRequests, selectedTeam, selectedCategory, selectedStatus, selectedUser, selectedShipment]);
 
-  // Each request is stored in its OWN currency (its issuing company's default
-  // currency), not GBP — GBP is only the base the live rates are quoted in. So
-  // every amount has to be converted to its GBP equivalent individually before
-  // being aggregated; treating the raw stored number as if it were already GBP
-  // double-applies the rate. Only the GBP figure is shown — not every currency.
+  // Each request is stored in its OWN currency, not GBP. A request submitted with a
+  // saved HMRC rate (gbpExchangeRate) already carries its GBP figure as budgetAmount —
+  // use that, so reports always agree with what was charged to the team. Older
+  // requests without a saved rate are converted at HMRC's latest published month.
   const getGbpEquivalent = (r: RequestRecord) => {
+    if (r.gbpExchangeRate) return r.budgetAmount || 0;
     const raw = r.sampleSkuTotal || r.budgetAmount || 0;
-    return currencyService.toGbp(raw, normalizeLedgerCurrency(r.currency), fxRates);
+    return Math.round(currencyService.toGbp(raw, normalizeLedgerCurrency(r.currency), fxRates) * 100) / 100;
   };
   const getNativeAmount = (r: RequestRecord) => r.sampleSkuTotal || r.budgetAmount || 0;
 
@@ -96,6 +82,8 @@ export const ReportsPage: React.FC = () => {
         'Native Amount',
         'Native Currency',
         'GBP Equivalent',
+        'Rate (per £1)',
+        'Rate Source',
         'Status',
         'Date'
       ];
@@ -111,6 +99,11 @@ export const ReportsPage: React.FC = () => {
         getNativeAmount(r),
         r.currency || 'GBP',
         getGbpEquivalent(r),
+        normalizeLedgerCurrency(r.currency) !== 'GBP' && r.gbpExchangeRate ? r.gbpExchangeRate : '',
+        (() => {
+          const snap = r.customFields?.fxSnapshot as FxSnapshot | undefined;
+          return snap ? describeRateSource(snap.source, snap.period) : '';
+        })(),
         r.status || '',
         r.requestDate || ''
       ]);
@@ -178,38 +171,23 @@ export const ReportsPage: React.FC = () => {
         </div>
       </div>
 
-      {/* Live FX Rate Status */}
+      {/* GBP conversion basis */}
       <Card className="p-4 bg-card border-primary/20 shadow-xs">
-        <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">
-          <div className="flex items-center gap-2.5">
-            <div className="w-8 h-8 rounded-lg bg-primary/10 text-primary flex items-center justify-center">
-              <Globe className="w-4 h-4" />
-            </div>
-            <div>
-              <div className="flex items-center gap-2">
-                <span className="text-xs font-bold text-foreground">Live GBP Conversion Rate</span>
-                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20">
-                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
-                  Live API Connected
-                </span>
-              </div>
-              <p className="text-[11px] text-muted-foreground">
-                Source: open.er-api.com · Base: British Pound (£ GBP) · Last updated: {fxTimestamp ? new Date(fxTimestamp).toLocaleTimeString() : 'Recent'}
-              </p>
-            </div>
+        <div className="flex items-center gap-2.5">
+          <div className="w-8 h-8 rounded-lg bg-primary/10 text-primary flex items-center justify-center">
+            <Globe className="w-4 h-4" />
           </div>
-
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            onClick={() => fetchLiveFx(true)}
-            disabled={isLoadingFx}
-            leftIcon={<RefreshCw className={`w-3.5 h-3.5 ${isLoadingFx ? 'animate-spin' : ''}`} />}
-            className="text-xs self-start md:self-auto"
-          >
-            {isLoadingFx ? 'Fetching Rates...' : 'Refresh Live Rates'}
-          </Button>
+          <div>
+            <div className="flex items-center gap-2">
+              <span className="text-xs font-bold text-foreground">GBP Conversion Rates</span>
+              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20">
+                HMRC
+              </span>
+            </div>
+            <p className="text-[11px] text-muted-foreground">
+              Source: HMRC monthly exchange rates (trade-tariff.service.gov.uk). Each request is converted at the HMRC rate for its request month, saved when it was submitted.
+            </p>
+          </div>
         </div>
       </Card>
 
@@ -365,7 +343,7 @@ export const ReportsPage: React.FC = () => {
               <thead>
                 <tr className="border-b border-border text-[11px] font-semibold text-muted-foreground uppercase tracking-wider bg-muted/20">
                   <th className="p-3 pl-4">Tracking #</th>
-                  <th className="p-3">Client / Business</th>
+                  <th className="p-3">Recipient</th>
                   <th className="p-3">Team</th>
                   <th className="p-3">Item / SKU</th>
                   <th className="p-3">Shipment</th>

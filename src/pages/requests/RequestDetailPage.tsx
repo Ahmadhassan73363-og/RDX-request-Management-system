@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   ArrowLeft,
   CheckCircle2,
@@ -22,14 +22,21 @@ import {
   FormInput,
   RotateCcw,
   Globe,
-  RefreshCw,
   Coins
 } from 'lucide-react';
 import { RequestRecord, RequestStatus, ShipmentStatus } from '../../types/request';
 import { getCurrencySymbol } from '../../types/company';
 import { useAuth } from '../../context/AuthContext';
 import { dataService } from '../../services/dataService';
-import { currencyService, ExchangeRatesData, normalizeLedgerCurrency } from '../../services/currencyService';
+import {
+  SHIPMENT_FLOW,
+  SHIPMENT_STEP_LABELS,
+  getShipmentStepIndex,
+  getNextShipmentStatus,
+  getAdvanceLabel,
+  validateShipmentAdvance
+} from '../../utils/shipmentFlow';
+import { currencyService, ExchangeRatesData, FxSnapshot, normalizeLedgerCurrency, describeRateSource } from '../../services/currencyService';
 import { Button } from '../../components/common/Button';
 import { Card, CardHeader, CardTitle, CardContent } from '../../components/common/Card';
 import { StatusBadge, PriorityBadge } from '../../components/common/Badge';
@@ -79,54 +86,43 @@ export const RequestDetailPage: React.FC<RequestDetailPageProps> = ({ requestId,
   const [appealReason, setAppealReason] = useState('');
   const [appealError, setAppealError] = useState('');
   const [isShipmentModalOpen, setIsShipmentModalOpen] = useState(false);
+  const [shipCarrier, setShipCarrier] = useState('');
+  const [shipTrackingText, setShipTrackingText] = useState('');
+  const [shipAddress, setShipAddress] = useState('');
+  const [shipNote, setShipNote] = useState('');
+  const [shipError, setShipError] = useState('');
 
-  // Live FX Rates — this page only ever shows amounts converted TO GBP (the
-  // company's reporting currency), never a switcher across other currencies.
+  // This page only ever shows amounts converted TO GBP (the company's reporting
+  // currency), never a switcher across other currencies.
   type LedgerCurrency = 'GBP' | 'USD' | 'EUR' | 'AED' | 'CAD';
-  const [fxRates, setFxRates] = useState<ExchangeRatesData>(() => currencyService.getCachedRates());
-  const [isLoadingFx, setIsLoadingFx] = useState(false);
-  const [useDeliveredRates, setUseDeliveredRates] = useState(true);
+  const nativeCurrency = normalizeLedgerCurrency(request?.currency) as LedgerCurrency;
 
-  const fetchLiveFx = async (force = false) => {
-    setIsLoadingFx(true);
-    try {
-      const data = await currencyService.getLiveRates(force);
-      setFxRates(data);
-    } catch (err) {
-      console.warn('Failed to refresh FX rates in RequestDetailPage:', err);
-    } finally {
-      setIsLoadingFx(false);
-    }
-  };
+  // The conversion rate is HMRC's monthly rate, saved on the request when it was
+  // submitted (gbpExchangeRate + customFields.fxSnapshot) so the figure never drifts.
+  const fxSnapshot = request?.customFields?.fxSnapshot as FxSnapshot | undefined;
+  const savedRate = nativeCurrency !== 'GBP' ? request?.gbpExchangeRate : undefined;
 
+  // Requests from before rates were saved: look up HMRC's rate for the request's month instead.
+  const [legacyFx, setLegacyFx] = useState<ExchangeRatesData | null>(null);
   useEffect(() => {
-    fetchLiveFx();
-  }, []);
+    if (!request || nativeCurrency === 'GBP' || savedRate) return;
+    let cancelled = false;
+    currencyService.getRatesForDate(request.requestDate).then(r => { if (!cancelled) setLegacyFx(r); });
+    return () => { cancelled = true; };
+  }, [request?.id, request?.requestDate, nativeCurrency, savedRate]);
 
-  const hasDeliveredRates = Boolean(request?.deliveredCurrencyRates);
-  const effectiveRates = useMemo(() => {
-    if (hasDeliveredRates && useDeliveredRates && request?.deliveredCurrencyRates) {
-      return {
-        GBP: 1,
-        USD: request.deliveredCurrencyRates.usdRate || fxRates.rates.USD || 1.32,
-        EUR: request.deliveredCurrencyRates.eurRate || fxRates.rates.EUR || 1.16,
-        AED: request.deliveredCurrencyRates.aedRate || fxRates.rates.AED || 4.85,
-        // Delivery-time snapshots only ever captured USD/EUR/AED — CAD always uses the live rate.
-        CAD: fxRates.rates.CAD || 1.80,
-        isDelivered: true,
-        timestamp: request.deliveredCurrencyRates.fetchedAt
-      };
-    }
-    return {
-      GBP: 1,
-      USD: fxRates.rates.USD || 1.32,
-      EUR: fxRates.rates.EUR || 1.16,
-      AED: fxRates.rates.AED || 4.85,
-      CAD: fxRates.rates.CAD || 1.80,
-      isDelivered: false,
-      timestamp: fxRates.timestamp
-    };
-  }, [hasDeliveredRates, useDeliveredRates, request?.deliveredCurrencyRates, fxRates]);
+  // Units of the request's own currency per £1
+  const nativeRate = nativeCurrency === 'GBP'
+    ? 1
+    : (savedRate
+      || legacyFx?.rates[nativeCurrency]
+      || currencyService.getCachedRatesForDate(request?.requestDate).rates[nativeCurrency]
+      || 1);
+
+  const rateSourceText = savedRate
+    ? (fxSnapshot ? describeRateSource(fxSnapshot.source, fxSnapshot.period) : 'rate saved at submission')
+    : (legacyFx ? describeRateSource(legacyFx.source || 'default', legacyFx.period) : 'loading HMRC rate…');
+  const rateTimestamp = savedRate ? fxSnapshot?.fetchedAt : legacyFx?.timestamp;
 
   const currencyConfig: Record<LedgerCurrency, { label: string; symbol: string; name: string }> = {
     GBP: { label: 'GBP', symbol: '£', name: 'British Pound' },
@@ -144,13 +140,12 @@ export const RequestDetailPage: React.FC<RequestDetailPageProps> = ({ requestId,
   // dataService.createRequest. A request created before that conversion existed
   // has no gbpExchangeRate saved, so its budgetAmount is still the raw native
   // number and must be treated the same way as requestValue for display.
-  const nativeCurrency = normalizeLedgerCurrency(request?.currency) as LedgerCurrency;
   const budgetIsGbpNative = nativeCurrency === 'GBP' || Boolean(request?.gbpExchangeRate);
   const budgetValueCurrency: LedgerCurrency = budgetIsGbpNative ? 'GBP' : nativeCurrency;
 
   // Converts val (denominated in valueCurrency) into its GBP figure.
   const formatGbp = (val: number, valueCurrency: LedgerCurrency = 'GBP') => {
-    const rate = effectiveRates[valueCurrency] || 1; // units of valueCurrency per 1 GBP
+    const rate = valueCurrency === 'GBP' ? 1 : nativeRate; // units of valueCurrency per 1 GBP
     const gbp = val / rate;
     return `£${gbp.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
   };
@@ -212,10 +207,38 @@ export const RequestDetailPage: React.FC<RequestDetailPageProps> = ({ requestId,
     }
   };
 
-  const handleUpdateShipmentStatus = (newStatus: ShipmentStatus) => {
-    dataService.updateShipmentStatus(request.id, newStatus, currentUser);
-    setIsShipmentModalOpen(false);
-    onUpdate();
+  const nextShipmentStatus = getNextShipmentStatus(request.shipmentStatus);
+  const advanceLabel = getAdvanceLabel(request.shipmentStatus);
+
+  const openShipmentModal = () => {
+    setShipError('');
+    setShipCarrier(request.shipmentOrganization || '');
+    setShipTrackingText((request.shipmentTrackingIds || []).join(', '));
+    setShipAddress(request.shipmentAddress || linkedCustomer?.shippingAddress || '');
+    setShipNote('');
+    setIsShipmentModalOpen(true);
+  };
+
+  const handleAdvanceShipment = () => {
+    if (!nextShipmentStatus) return;
+    const trackingIds = shipTrackingText.split(',').map(id => id.trim()).filter(Boolean);
+    const validationError = validateShipmentAdvance(nextShipmentStatus, { trackingIds, address: shipAddress });
+    if (validationError) {
+      setShipError(validationError);
+      return;
+    }
+    try {
+      dataService.updateShipmentStatus(request.id, nextShipmentStatus, currentUser, shipNote.trim() || undefined, {
+        trackingIds,
+        address: shipAddress,
+        shipmentDate: request.shipmentDate || new Date().toISOString().split('T')[0],
+        organization: shipCarrier
+      });
+      setIsShipmentModalOpen(false);
+      onUpdate();
+    } catch (err: any) {
+      setShipError(err.message || 'Failed to update shipment status');
+    }
   };
 
   const handleOpenAction = (type: 'approve' | 'reject' | 'request_changes' | 'override_approve') => {
@@ -367,15 +390,15 @@ export const RequestDetailPage: React.FC<RequestDetailPageProps> = ({ requestId,
           }
 
           {/* Shipment Manager: update shipment status */}
-          {request.status === 'approved' && isShipmentManager && (
+          {request.status === 'approved' && isShipmentManager && advanceLabel && (
             <Button
               variant="outline"
               size="sm"
-              onClick={() => setIsShipmentModalOpen(true)}
+              onClick={openShipmentModal}
               leftIcon={<Truck className="w-3.5 h-3.5" />}
               className="border-blue-400 text-blue-600 hover:bg-blue-50 dark:text-blue-400"
             >
-              Update Shipment
+              {advanceLabel}
             </Button>
           )}
         </div>
@@ -421,7 +444,7 @@ export const RequestDetailPage: React.FC<RequestDetailPageProps> = ({ requestId,
                   <p className="text-sm font-bold text-foreground">{request.ourCompanyName || request.companyName || '—'}</p>
                 </div>
                 <div className="space-y-1">
-                  <span className="text-muted-foreground uppercase tracking-wider font-semibold text-[10px]">Business Name (Customer)</span>
+                  <span className="text-muted-foreground uppercase tracking-wider font-semibold text-[10px]">Recipient</span>
                   <p className="text-sm font-bold text-foreground">{request.businessName || request.customerCompany}</p>
                 </div>
                 <div className="space-y-1">
@@ -552,7 +575,7 @@ export const RequestDetailPage: React.FC<RequestDetailPageProps> = ({ requestId,
           </Card>
 
           {/* Dynamic Form Schema Custom Fields (if submitted via custom or dynamic form) */}
-          {request.customFields && Object.keys(request.customFields).length > 0 && (
+          {request.customFields && Object.keys(request.customFields).some(k => k !== 'fxSnapshot') && (
             <Card>
               <CardHeader>
                 <div className="flex items-center justify-between">
@@ -572,7 +595,7 @@ export const RequestDetailPage: React.FC<RequestDetailPageProps> = ({ requestId,
               </CardHeader>
               <CardContent>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
-                  {Object.entries(request.customFields).map(([label, val]) => (
+                  {Object.entries(request.customFields).filter(([label]) => label !== 'fxSnapshot').map(([label, val]) => (
                     <div key={label} className="p-3 rounded-xl bg-muted/30 border border-border/70 space-y-1">
                       <span className="text-[10px] uppercase font-bold text-muted-foreground tracking-wider block">
                         {label}
@@ -735,19 +758,9 @@ export const RequestDetailPage: React.FC<RequestDetailPageProps> = ({ requestId,
                   <Coins className="w-4 h-4 text-primary" />
                   Team Budget Impact Ledger
                 </CardTitle>
-                <button
-                  type="button"
-                  onClick={() => fetchLiveFx(true)}
-                  disabled={isLoadingFx}
-                  title="Refresh live forex exchange rates"
-                  className="inline-flex items-center gap-1 px-2 py-1 text-[11px] rounded-md font-medium text-muted-foreground hover:text-foreground bg-muted hover:bg-muted/80 transition-colors disabled:opacity-50"
-                >
-                  <RefreshCw className={`w-3 h-3 ${isLoadingFx ? 'animate-spin text-primary' : ''}`} />
-                  <span className="hidden sm:inline">Refresh</span>
-                </button>
               </div>
               <p className="text-xs text-muted-foreground">
-                Real-time financial reconciliation for {team.name}
+                Financial reconciliation for {team.name} · all budget figures in GBP
               </p>
             </CardHeader>
             <CardContent className="space-y-4">
@@ -758,8 +771,8 @@ export const RequestDetailPage: React.FC<RequestDetailPageProps> = ({ requestId,
                 </div>
               )}
 
-              {/* GBP Conversion Rate — only shown when the request wasn't submitted in GBP */}
-              {!budgetIsGbpNative && (
+              {/* GBP conversion — shown whenever the request wasn't submitted in GBP */}
+              {nativeCurrency !== 'GBP' && (
                 <div className="p-3 rounded-xl bg-muted/40 border border-border/80 space-y-2">
                   <div className="flex items-center justify-between">
                     <span className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground flex items-center gap-1">
@@ -767,32 +780,18 @@ export const RequestDetailPage: React.FC<RequestDetailPageProps> = ({ requestId,
                       GBP Conversion
                     </span>
                     <span className="text-[11px] font-mono font-bold text-primary bg-primary/10 border border-primary/20 px-2 py-0.5 rounded-md">
-                      1 {nativeCurrency} = {(1 / (effectiveRates[nativeCurrency] || 1)).toFixed(4)} GBP
+                      1 {nativeCurrency} = £{(1 / nativeRate).toFixed(4)}
                     </span>
                   </div>
 
-                  {/* Exchange Rate Status Indicator */}
-                  <div className="flex items-center justify-between text-[10px] text-muted-foreground px-0.5">
-                    <span className="flex items-center gap-1.5">
-                      <span className={`w-2 h-2 rounded-full ${effectiveRates.isDelivered ? 'bg-amber-500' : 'bg-emerald-500 animate-pulse'}`} />
-                      <span>{effectiveRates.isDelivered ? 'Locked Delivery FX Rate' : 'Live Real-Time Market Rate'}</span>
-                    </span>
-                    {hasDeliveredRates && (
-                      <button
-                        type="button"
-                        onClick={() => setUseDeliveredRates(!useDeliveredRates)}
-                        className="underline hover:text-foreground text-[10px] font-medium"
-                      >
-                        {useDeliveredRates ? 'Switch to Live Rates' : 'Switch to Delivery Rates'}
-                      </button>
-                    )}
+                  <div className="flex items-center gap-1.5 text-[10px] text-muted-foreground px-0.5">
+                    <span className={`w-2 h-2 rounded-full ${savedRate ? 'bg-emerald-500' : 'bg-amber-500'}`} />
+                    <span>{savedRate ? 'Rate saved with this request at submission' : 'Rate looked up now — not saved with this older request'}</span>
                   </div>
 
-                  {/* Rate provenance: proves this is a real fetched/saved rate, not a guess */}
-                  <div className="text-[9px] text-muted-foreground/80 px-0.5">
-                    Source: open.er-api.com{effectiveRates.timestamp && (
-                      <> · {effectiveRates.isDelivered ? 'saved' : 'fetched'} {new Date(effectiveRates.timestamp).toLocaleString()}</>
-                    )}
+                  <div className="text-[10px] text-muted-foreground/90 px-0.5 leading-relaxed">
+                    Source: {rateSourceText}
+                    {rateTimestamp && <> · fetched {new Date(rateTimestamp).toLocaleString()}</>}
                   </div>
                 </div>
               )}
@@ -820,7 +819,7 @@ export const RequestDetailPage: React.FC<RequestDetailPageProps> = ({ requestId,
                 <div className="flex items-center justify-between pt-1">
                   <span className="text-muted-foreground font-sans font-bold">Projected After Approval:</span>
                   <span className={`font-bold text-sm ${hasSufficientBudget ? 'text-foreground' : 'text-rose-600 dark:text-rose-400'}`}>
-                    {formatGbp((team.remainingBudget || 0) - (request.status === 'approved' ? 0 : (request.budgetAmount || 0) / (budgetValueCurrency === 'GBP' ? 1 : (effectiveRates[budgetValueCurrency] || 1))))}
+                    {formatGbp((team.remainingBudget || 0) - (request.status === 'approved' ? 0 : (request.budgetAmount || 0) / (budgetValueCurrency === 'GBP' ? 1 : nativeRate)))}
                   </span>
                 </div>
               </div>
@@ -899,15 +898,15 @@ export const RequestDetailPage: React.FC<RequestDetailPageProps> = ({ requestId,
                     </p>
                   )}
 
-                  {isShipmentManager && (
+                  {isShipmentManager && advanceLabel && (
                     <Button
                       variant="outline"
                       size="sm"
-                      onClick={() => setIsShipmentModalOpen(true)}
+                      onClick={openShipmentModal}
                       leftIcon={<Truck className="w-3.5 h-3.5" />}
                       className="w-full mt-2 border-primary/40 text-primary hover:bg-primary/10"
                     >
-                      Update Shipment Status
+                      {advanceLabel}
                     </Button>
                   )}
                 </>
@@ -1091,44 +1090,106 @@ export const RequestDetailPage: React.FC<RequestDetailPageProps> = ({ requestId,
         </div>
       </Modal>
 
-      {/* Shipment Status Update Modal (Shipment Manager only) */}
+      {/* Shipment Status Update Modal (Shipment Manager only) — one step forward at a time */}
       <Modal
-        isOpen={isShipmentModalOpen}
+        isOpen={isShipmentModalOpen && !!nextShipmentStatus}
         onClose={() => setIsShipmentModalOpen(false)}
-        title="Update Shipment Status"
-        description="Shipment Manager exclusive — transition the logistics status"
-        maxWidth="sm"
+        title="Advance Shipment"
+        description="Shipment Manager exclusive — status moves forward one step at a time and cannot be reversed"
+        maxWidth="lg"
       >
-        <div className="space-y-3">
-          <p className="text-xs text-muted-foreground">Current status: <strong>{shipmentStatusConfig[request.shipmentStatus || 'approved']?.label}</strong></p>
-          <div className="grid grid-cols-1 gap-2">
-            {(['approved', 'in_process', 'dispatched', 'delivered'] as ShipmentStatus[]).map(status => {
-              const cfg = shipmentStatusConfig[status];
-              const isCurrent = (request.shipmentStatus || 'approved') === status;
-              return (
-                <button
-                  key={status}
-                  onClick={() => handleUpdateShipmentStatus(status)}
-                  disabled={isCurrent}
-                  className={`flex items-center gap-3 p-3 rounded-xl border text-left text-xs transition-all ${
-                    isCurrent
-                      ? 'border-primary bg-primary/5 cursor-not-allowed opacity-60'
-                      : 'border-border hover:border-primary/50 hover:bg-muted/50 cursor-pointer'
-                  }`}
-                >
-                  <span className={`p-1.5 rounded-lg border ${cfg.color}`}>{cfg.icon}</span>
-                  <div>
-                    <p className="font-semibold text-foreground">{cfg.label}</p>
-                    {isCurrent && <p className="text-[10px] text-muted-foreground">Current status</p>}
+        {nextShipmentStatus && (
+          <div className="space-y-4">
+            {shipError && (
+              <div className="p-3 rounded-xl bg-destructive/10 border border-destructive/20 text-destructive text-xs flex items-center gap-2">
+                <AlertTriangle className="w-4 h-4 shrink-0" />
+                {shipError}
+              </div>
+            )}
+
+            <div className="grid grid-cols-1 gap-2">
+              {SHIPMENT_FLOW.map((step, idx) => {
+                const cfg = shipmentStatusConfig[step];
+                const currentIdx = getShipmentStepIndex(request.shipmentStatus);
+                const state = idx < currentIdx ? 'done' : idx === currentIdx ? 'current' : step === nextShipmentStatus ? 'next' : 'locked';
+                return (
+                  <div
+                    key={step}
+                    className={`flex items-center gap-3 p-3 rounded-xl border text-xs ${
+                      state === 'next'
+                        ? 'border-primary bg-primary/5'
+                        : state === 'current'
+                        ? 'border-border bg-muted/40'
+                        : 'border-border/60 opacity-60'
+                    }`}
+                  >
+                    <span className={`p-1.5 rounded-lg border ${cfg.color}`}>{cfg.icon}</span>
+                    <p className="font-semibold text-foreground flex-1">{SHIPMENT_STEP_LABELS[step]}</p>
+                    <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+                      {state === 'done' ? 'Completed' : state === 'current' ? 'Current' : state === 'next' ? 'Next step' : 'Locked'}
+                    </span>
                   </div>
-                </button>
-              );
-            })}
+                );
+              })}
+            </div>
+
+            <div className="space-y-3 p-4 rounded-xl border border-border bg-muted/10">
+              <div className="space-y-1.5">
+                <label className="block text-xs font-semibold text-foreground">Carrier / Logistics Organization</label>
+                <input
+                  type="text"
+                  value={shipCarrier}
+                  onChange={e => setShipCarrier(e.target.value)}
+                  placeholder="e.g. DHL Express, FedEx, Aramex, UPS..."
+                  className="w-full bg-background border border-input rounded-lg px-3.5 py-2 text-xs text-foreground focus:outline-none focus:ring-2 focus:ring-primary/30"
+                />
+              </div>
+              <div className="space-y-1.5">
+                <label className="block text-xs font-semibold text-foreground">
+                  Courier Tracking ID(s) {nextShipmentStatus === 'dispatched' && <span className="text-destructive">*</span>}
+                  <span className="text-muted-foreground font-normal"> — separate several with commas</span>
+                </label>
+                <input
+                  type="text"
+                  value={shipTrackingText}
+                  onChange={e => setShipTrackingText(e.target.value)}
+                  placeholder="e.g. 1Z999AA10123456784"
+                  className="w-full bg-background border border-input rounded-lg px-3.5 py-2 text-xs font-mono text-foreground focus:outline-none focus:ring-2 focus:ring-primary/30"
+                />
+              </div>
+              <div className="space-y-1.5">
+                <label className="block text-xs font-semibold text-foreground">
+                  Shipment Destination Address {(nextShipmentStatus === 'dispatched' || nextShipmentStatus === 'in_process') && <span className="text-destructive">*</span>}
+                </label>
+                <textarea
+                  rows={2}
+                  value={shipAddress}
+                  onChange={e => setShipAddress(e.target.value)}
+                  placeholder="e.g. 123 Business Park, Suite 400, Dubai, UAE"
+                  className="w-full bg-background border border-input rounded-lg px-3.5 py-2 text-xs text-foreground focus:outline-none focus:ring-2 focus:ring-primary/30 resize-none"
+                />
+              </div>
+              <div className="space-y-1.5">
+                <label className="block text-xs font-semibold text-foreground">
+                  Logistics Note <span className="text-muted-foreground font-normal">(Optional)</span>
+                </label>
+                <textarea
+                  rows={2}
+                  value={shipNote}
+                  onChange={e => setShipNote(e.target.value)}
+                  className="w-full bg-background border border-input rounded-lg px-3.5 py-2 text-xs text-foreground focus:outline-none focus:ring-2 focus:ring-primary/30 resize-none"
+                />
+              </div>
+            </div>
+
+            <div className="flex justify-end gap-3 pt-2 border-t border-border">
+              <Button variant="outline" size="sm" onClick={() => setIsShipmentModalOpen(false)}>Cancel</Button>
+              <Button variant="primary" size="sm" onClick={handleAdvanceShipment} leftIcon={<Truck className="w-3.5 h-3.5" />}>
+                {advanceLabel}
+              </Button>
+            </div>
           </div>
-          <div className="flex justify-end pt-2 border-t border-border">
-            <Button variant="outline" size="sm" onClick={() => setIsShipmentModalOpen(false)}>Close</Button>
-          </div>
-        </div>
+        )}
       </Modal>
     </div>
   );
