@@ -7,6 +7,7 @@ import { Card } from '../../components/common/Card';
 import { Button } from '../../components/common/Button';
 import { Modal } from '../../components/common/Modal';
 import { Input } from '../../components/common/Input';
+import { DeleteOrDeactivateModal } from '../../components/common/DeleteOrDeactivateModal';
 import { useSyncedState } from '../../hooks/useSyncedState';
 
 export const WarehousesPage: React.FC = () => {
@@ -69,6 +70,26 @@ export const WarehousesPage: React.FC = () => {
       refresh();
     } catch (err: any) {
       setError(err.message || 'Error saving warehouse');
+    }
+  };
+
+  const handleDeactivateFromModal = () => {
+    if (!warehouseToDelete) return;
+    try {
+      dataService.setWarehouseActive(warehouseToDelete.id, false, currentUser);
+      setWarehouseToDelete(null);
+      refresh();
+    } catch (err: any) {
+      setDeleteError(err.message || 'Error deactivating warehouse');
+    }
+  };
+
+  const handleToggleActive = (w: Warehouse) => {
+    try {
+      dataService.setWarehouseActive(w.id, w.active === false, currentUser);
+      refresh();
+    } catch (err: any) {
+      alert(err.message || 'Error changing warehouse status');
     }
   };
 
@@ -147,10 +168,25 @@ export const WarehousesPage: React.FC = () => {
               </div>
             </div>
 
-            <div className="p-3 bg-muted/20 border-t border-border/60 flex items-center text-xs px-5">
-              <span className="flex items-center gap-1.5 text-[11px] text-emerald-600 dark:text-emerald-400 font-medium">
-                <CheckCircle2 className="w-3.5 h-3.5" /> {w.active ? 'Active' : 'Inactive'}
-              </span>
+            <div className="p-3 bg-muted/20 border-t border-border/60 flex items-center justify-between text-xs px-5">
+              {w.active !== false ? (
+                <span className="flex items-center gap-1.5 text-[11px] text-emerald-600 dark:text-emerald-400 font-medium">
+                  <CheckCircle2 className="w-3.5 h-3.5" /> Active
+                </span>
+              ) : (
+                <span className="flex items-center gap-1.5 text-[11px] text-amber-600 dark:text-amber-400 font-medium">
+                  <AlertTriangle className="w-3.5 h-3.5" /> Deactivated
+                </span>
+              )}
+              {canManage && (
+                <button
+                  onClick={() => handleToggleActive(w)}
+                  className="text-xs text-muted-foreground hover:text-foreground underline decoration-dotted transition-colors"
+                  title={w.active !== false ? 'Hide from new requests' : 'Make available for new requests again'}
+                >
+                  {w.active !== false ? 'Deactivate' : 'Reactivate'}
+                </button>
+              )}
             </div>
           </Card>
         ))}
@@ -200,36 +236,22 @@ export const WarehousesPage: React.FC = () => {
         </form>
       </Modal>
 
-      <Modal
-        isOpen={!!warehouseToDelete}
-        onClose={() => setWarehouseToDelete(null)}
-        title="Delete Warehouse Confirmation"
-        description="Permanently remove warehouse from organization"
-        maxWidth="sm"
-      >
-        <div className="space-y-4">
-          {deleteError && (
-            <div className="p-3 rounded-xl bg-destructive/10 border border-destructive/20 text-destructive text-xs">
-              {deleteError}
-            </div>
-          )}
-          <div className="p-3.5 rounded-xl bg-destructive/10 border border-destructive/20 flex items-start gap-3">
-            <AlertTriangle className="w-5 h-5 text-destructive shrink-0 mt-0.5" />
-            <div className="text-xs space-y-1">
-              <p className="font-bold text-foreground">
-                Are you sure you want to delete <span className="text-destructive font-mono">{warehouseToDelete?.name}</span>?
-              </p>
-              <p className="text-muted-foreground leading-relaxed">
-                This is blocked if any requests are still linked to this warehouse.
-              </p>
-            </div>
-          </div>
-          <div className="flex items-center justify-end gap-2.5 pt-3 border-t border-border">
-            <Button type="button" variant="outline" size="sm" onClick={() => setWarehouseToDelete(null)}>Cancel</Button>
-            <Button type="button" variant="destructive" size="sm" onClick={handleConfirmDelete} leftIcon={<Trash2 className="w-4 h-4" />}>Confirm Delete</Button>
-          </div>
-        </div>
-      </Modal>
+      {(() => {
+        const usage = warehouseToDelete ? dataService.getWarehouseUsage(warehouseToDelete.id) : { requests: 0 };
+        return (
+          <DeleteOrDeactivateModal
+            isOpen={!!warehouseToDelete}
+            onClose={() => setWarehouseToDelete(null)}
+            entityLabel="warehouse"
+            name={warehouseToDelete?.name || ''}
+            inUseBy={usage.requests > 0 ? `${usage.requests} request(s)` : undefined}
+            isActive={warehouseToDelete?.active !== false}
+            error={deleteError}
+            onDelete={handleConfirmDelete}
+            onDeactivate={handleDeactivateFromModal}
+          />
+        );
+      })()}
     </div>
   );
 };

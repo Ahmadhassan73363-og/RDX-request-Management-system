@@ -314,6 +314,10 @@ class DataService {
     let users = this.getUsers();
     const user = users.find(u => u.id === userId);
     if (!user) throw new Error('User not found');
+    const usage = this.getUserUsage(userId);
+    if (usage.requests > 0 || usage.teamsLed > 0) {
+      throw new Error(`Cannot delete ${user.name}: they submitted ${usage.requests} request(s) and lead ${usage.teamsLed} team(s). Deactivate the account instead.`);
+    }
     users = users.filter(u => u.id !== userId);
     storage.set('users', users);
     api.deleteUser(userId).catch(() => {});
@@ -360,6 +364,10 @@ class DataService {
     const role = roles.find(r => r.id === roleId);
     if (!role || role.isSystem) {
       throw new Error('System roles cannot be deleted');
+    }
+    const assigned = this.getUsers().filter(u => u.roleId === roleId).length;
+    if (assigned > 0) {
+      throw new Error(`Cannot delete role "${role.name}": ${assigned} user(s) still have it. Reassign them first.`);
     }
     roles = roles.filter(r => r.id !== roleId);
     storage.set('roles', roles);
@@ -422,9 +430,9 @@ class DataService {
     const company = companies.find(c => c.id === companyId);
     if (!company) throw new Error('Company not found');
 
-    const dependentRequests = this.getRequests().filter(r => r.companyId === companyId);
-    if (dependentRequests.length > 0) {
-      throw new Error(`Cannot delete ${company.name}: ${dependentRequests.length} request(s) are still linked to it. Reassign or resolve them first.`);
+    const usage = this.getCompanyUsage(companyId);
+    if (usage.requests > 0 || usage.warehouses > 0) {
+      throw new Error(`Cannot delete ${company.name}: it is in use by ${usage.requests} request(s) and ${usage.warehouses} warehouse(s). Deactivate it instead.`);
     }
 
     storage.set('companies', companies.filter(c => c.id !== companyId));
@@ -475,7 +483,7 @@ class DataService {
 
     const dependentRequests = this.getRequests().filter(r => r.warehouseId === warehouseId);
     if (dependentRequests.length > 0) {
-      throw new Error(`Cannot delete ${warehouse.name}: ${dependentRequests.length} request(s) are still linked to it. Reassign or resolve them first.`);
+      throw new Error(`Cannot delete ${warehouse.name}: it is in use by ${dependentRequests.length} request(s). Deactivate it instead.`);
     }
 
     storage.set('warehouses', warehouses.filter(w => w.id !== warehouseId));
@@ -528,12 +536,220 @@ class DataService {
 
     const dependentRequests = this.getRequests().filter(r => r.customerId === customerId);
     if (dependentRequests.length > 0) {
-      throw new Error(`Cannot delete ${customer.contactName}: ${dependentRequests.length} request(s) are still linked to this customer. Reassign or resolve them first.`);
+      throw new Error(`Cannot delete ${customer.contactName}: it is in use by ${dependentRequests.length} request(s). Deactivate it instead.`);
     }
 
     storage.set('customers', customers.filter(c => c.id !== customerId));
     api.deleteCustomer(customerId).catch(() => {});
     this.logAudit('CUSTOMER_DELETE', 'Customer', customerId, `Deleted customer ${customer.contactName}`, actor);
+  }
+
+  // --- "In use" checks and activate / deactivate ---
+  // Anything linked to other records can't be hard-deleted without orphaning them, so the
+  // UI offers Deactivate instead (hidden from new requests, history intact) and Reactivate.
+  public getCompanyUsage(companyId: string) {
+    return {
+      requests: this.getRequests().filter(r => r.companyId === companyId).length,
+      warehouses: this.getWarehouses().filter(w => w.companyId === companyId).length
+    };
+  }
+
+  public getWarehouseUsage(warehouseId: string) {
+    return { requests: this.getRequests().filter(r => r.warehouseId === warehouseId).length };
+  }
+
+  public getCustomerUsage(customerId: string) {
+    return { requests: this.getRequests().filter(r => r.customerId === customerId).length };
+  }
+
+  public getUserUsage(userId: string) {
+    return {
+      requests: this.getRequests().filter(r => r.submittedByUserId === userId).length,
+      teamsLed: this.getTeams().filter(t => t.leadId === userId).length
+    };
+  }
+
+  public getFormUsage(formId: string) {
+    return { requests: this.getRequests().filter(r => r.formId === formId).length };
+  }
+
+  private setEntityActive<T extends { id: string; active: boolean }>(
+    key: 'companies' | 'warehouses' | 'customers',
+    id: string,
+    active: boolean,
+    actor: User,
+    describe: (e: T) => string,
+    audit: { prefix: 'COMPANY' | 'WAREHOUSE' | 'CUSTOMER'; entityType: AuditLog['entityType'] },
+    persist: (e: T) => Promise<boolean>
+  ): T {
+    const list = storage.get<T[]>(key, []);
+    const idx = list.findIndex(e => e.id === id);
+    if (idx === -1) throw new Error('Record not found');
+    const old = list[idx];
+    const updated = { ...old, active };
+    list[idx] = updated;
+    storage.set(key, list);
+    persist(updated).catch(() => {});
+    this.logAudit(
+      `${audit.prefix}_${active ? 'ACTIVATE' : 'DEACTIVATE'}` as AuditActionType,
+      audit.entityType,
+      id,
+      `${active ? 'Reactivated' : 'Deactivated'} ${describe(updated)}`,
+      actor,
+      JSON.stringify(old),
+      JSON.stringify(updated)
+    );
+    return updated;
+  }
+
+  public setCompanyActive(companyId: string, active: boolean, actor: User): Company {
+    return this.setEntityActive<Company>('companies', companyId, active, actor, c => `company ${c.name}`,
+      { prefix: 'COMPANY', entityType: 'Company' }, c => api.saveCompany(c));
+  }
+
+  public setWarehouseActive(warehouseId: string, active: boolean, actor: User): Warehouse {
+    return this.setEntityActive<Warehouse>('warehouses', warehouseId, active, actor, w => `warehouse ${w.name}`,
+      { prefix: 'WAREHOUSE', entityType: 'Warehouse' }, w => api.saveWarehouse(w));
+  }
+
+  public setCustomerActive(customerId: string, active: boolean, actor: User): Customer {
+    return this.setEntityActive<Customer>('customers', customerId, active, actor, c => `customer ${c.contactName}`,
+      { prefix: 'CUSTOMER', entityType: 'Customer' }, c => api.saveCustomer(c));
+  }
+
+  public setFormActive(formId: string, active: boolean, actor: User): FormSchema {
+    const forms = this.getForms();
+    const idx = forms.findIndex(f => f.id === formId);
+    if (idx === -1) throw new Error('Form not found');
+    const updated = { ...forms[idx], isActive: active };
+    forms[idx] = updated;
+    storage.set('forms', forms);
+    api.saveForm(updated).catch(() => {});
+    this.logAudit(active ? 'FORM_ACTIVATE' : 'FORM_DEACTIVATE', 'Form', formId,
+      `${active ? 'Reactivated' : 'Deactivated'} dynamic form "${updated.title}"`, actor);
+    return updated;
+  }
+
+  // --- Request lifecycle: delete / deactivate / reactivate ---
+  // Pending or rejected requests have charged nothing, so they can simply be deleted.
+  // An approved request has charged its team's budget and entered the shipment queue — it is
+  // "in use": it can't be deleted, but it can be deactivated (cancelled, budget refunded)
+  // until it ships, and reactivated later (budget charged again).
+  public getRequestLifecycle(req: RequestRecord): {
+    canDelete: boolean;
+    canDeactivate: boolean;
+    canActivate: boolean;
+    inUseReason?: string;
+  } {
+    const budgetCharged = req.status === 'approved' || req.status === 'completed';
+    const dispatched = req.shipmentStatus === 'dispatched' || req.shipmentStatus === 'delivered';
+    return {
+      canDelete: !budgetCharged,
+      canDeactivate: req.status === 'approved' && !dispatched,
+      canActivate: req.status === 'cancelled' && !!req.approvedAmount,
+      inUseReason: budgetCharged
+        ? (dispatched
+          ? 'This request is already dispatched or delivered, so it can no longer be deleted or deactivated.'
+          : 'This request is approved: its budget has been charged to the team and it is in the shipment queue.')
+        : undefined
+    };
+  }
+
+  // Charges (or refunds) a request's budget against its team and records the ledger entry.
+  private applyRequestBudget(req: RequestRecord, direction: 'deduct' | 'refund', actor: User, reason: string) {
+    const teams = this.getTeams();
+    const team = teams.find(t => t.id === req.teamId);
+    if (!team) {
+      if (direction === 'deduct') throw new Error('This request\'s team no longer exists — its budget cannot be charged.');
+      return;
+    }
+    const amount = req.budgetAmount || 0;
+    const balanceBefore = team.remainingBudget;
+    if (direction === 'deduct' && balanceBefore < amount) {
+      throw new Error(`Insufficient team budget to reactivate: ${team.name} has ${balanceBefore.toLocaleString()} left, request needs ${amount.toLocaleString()}.`);
+    }
+    const round2 = (n: number) => Math.round(n * 100) / 100;
+    if (direction === 'deduct') {
+      team.spentBudget = round2(team.spentBudget + amount);
+      team.remainingBudget = round2(team.remainingBudget - amount);
+    } else {
+      team.spentBudget = Math.max(0, round2(team.spentBudget - amount));
+      team.remainingBudget = round2(team.remainingBudget + amount);
+    }
+    storage.set('teams', teams);
+    api.saveTeam(team).catch(() => {});
+    this.addBudgetTransaction({
+      teamId: team.id,
+      teamName: team.name,
+      type: direction === 'deduct' ? 'REQUEST_DEDUCTION' : 'REQUEST_REFUND',
+      amount,
+      balanceBefore,
+      balanceAfter: team.remainingBudget,
+      reason,
+      requestId: req.id,
+      performedByUserId: actor.id,
+      performedByUserName: actor.name
+    });
+  }
+
+  private addSystemComment(req: RequestRecord, actor: User, content: string) {
+    req.comments.push({
+      id: 'c-' + Date.now(),
+      userId: actor.id,
+      userName: actor.name,
+      userRole: actor.roleName,
+      content,
+      createdAt: new Date().toISOString()
+    });
+  }
+
+  public deleteRequest(requestId: string, actor: User) {
+    const requests = this.getRequests();
+    const req = requests.find(r => r.id === requestId);
+    if (!req) throw new Error('Request not found');
+    const lifecycle = this.getRequestLifecycle(req);
+    if (!lifecycle.canDelete) {
+      throw new Error(`Cannot delete ${req.trackingNumber}. ${lifecycle.inUseReason} Deactivate it instead.`);
+    }
+    storage.set('requests', requests.filter(r => r.id !== requestId));
+    api.deleteRequest(requestId).catch(() => {});
+    this.logAudit('REQUEST_DELETE', 'RequestRecord', requestId, `Deleted request ${req.trackingNumber} (${req.status}) by ${actor.name}`, actor, JSON.stringify(req));
+  }
+
+  public deactivateRequest(requestId: string, actor: User): RequestRecord {
+    const requests = this.getRequests();
+    const req = requests.find(r => r.id === requestId);
+    if (!req) throw new Error('Request not found');
+    if (!this.getRequestLifecycle(req).canDeactivate) {
+      throw new Error(`${req.trackingNumber} cannot be deactivated (only approved requests that haven't been dispatched).`);
+    }
+    this.applyRequestBudget(req, 'refund', actor, `Refund: Request ${req.trackingNumber} deactivated by ${actor.name}`);
+    req.status = 'cancelled';
+    req.updatedAt = new Date().toISOString();
+    this.addSystemComment(req, actor, `[SYSTEM] Request deactivated by ${actor.name}. Its budget was refunded to the team.`);
+    storage.set('requests', requests);
+    api.updateRequest(req.id, { status: req.status, comments: req.comments }).catch(() => {});
+    this.notify(req.submittedByUserId, `Request Deactivated: ${req.trackingNumber}`, `${actor.name} deactivated your request and refunded its budget.`, 'REQUEST_REJECTED', req.id, 'request', '/requests');
+    this.logAudit('REQUEST_DEACTIVATE', 'RequestRecord', req.id, `Deactivated request ${req.trackingNumber}; budget refunded`, actor);
+    return req;
+  }
+
+  public activateRequest(requestId: string, actor: User): RequestRecord {
+    const requests = this.getRequests();
+    const req = requests.find(r => r.id === requestId);
+    if (!req) throw new Error('Request not found');
+    if (!this.getRequestLifecycle(req).canActivate) {
+      throw new Error(`${req.trackingNumber} cannot be reactivated (it was never approved).`);
+    }
+    this.applyRequestBudget(req, 'deduct', actor, `Re-deduction: Request ${req.trackingNumber} reactivated by ${actor.name}`);
+    req.status = 'approved';
+    req.shipmentStatus = req.shipmentStatus || 'approved';
+    req.updatedAt = new Date().toISOString();
+    this.addSystemComment(req, actor, `[SYSTEM] Request reactivated by ${actor.name}. Its budget was charged to the team again.`);
+    storage.set('requests', requests);
+    api.updateRequest(req.id, { status: req.status, shipmentStatus: req.shipmentStatus, comments: req.comments }).catch(() => {});
+    this.logAudit('REQUEST_ACTIVATE', 'RequestRecord', req.id, `Reactivated request ${req.trackingNumber}; budget charged again`, actor);
+    return req;
   }
 
   // --- Teams & Budgets ---
@@ -1300,6 +1516,10 @@ class DataService {
     const req = requests.find(r => r.id === requestId);
     if (!req) throw new Error('Request not found');
 
+    if (req.status === 'cancelled') {
+      throw new Error('This request is deactivated. Reactivate it before changing its shipment.');
+    }
+
     // Shipments move forward exactly one step at a time and never backwards.
     const allowedNext = getNextShipmentStatus(req.shipmentStatus);
     if (status !== allowedNext) {
@@ -1438,6 +1658,10 @@ class DataService {
     let forms = this.getForms();
     const form = forms.find(f => f.id === formId);
     if (!form) return;
+    const usage = this.getFormUsage(formId);
+    if (usage.requests > 0) {
+      throw new Error(`Cannot delete "${form.title}": ${usage.requests} request(s) were submitted with it. Deactivate it instead.`);
+    }
     forms = forms.filter(f => f.id !== formId);
     storage.set('forms', forms);
     // Persist deletion to the database (was previously missing this call)

@@ -8,6 +8,7 @@ import { Button } from '../../components/common/Button';
 import { Modal } from '../../components/common/Modal';
 import { Input } from '../../components/common/Input';
 import { Select } from '../../components/common/Select';
+import { DeleteOrDeactivateModal } from '../../components/common/DeleteOrDeactivateModal';
 import { useSyncedState } from '../../hooks/useSyncedState';
 
 export const CompaniesPage: React.FC = () => {
@@ -121,6 +122,26 @@ export const CompaniesPage: React.FC = () => {
     }
   };
 
+  const handleDeactivateFromModal = () => {
+    if (!companyToDelete) return;
+    try {
+      dataService.setCompanyActive(companyToDelete.id, false, currentUser);
+      setCompanyToDelete(null);
+      refresh();
+    } catch (err: any) {
+      setDeleteError(err.message || 'Error deactivating company');
+    }
+  };
+
+  const handleToggleActive = (c: Company) => {
+    try {
+      dataService.setCompanyActive(c.id, c.active === false, currentUser);
+      refresh();
+    } catch (err: any) {
+      alert(err.message || 'Error changing company status');
+    }
+  };
+
   const getCurrencyDisplay = (code: string) => {
     const match = COMPANY_CURRENCIES.find(c => c.value === code);
     return match ? `${match.label}` : code;
@@ -226,12 +247,29 @@ export const CompaniesPage: React.FC = () => {
             </div>
 
             <div className="p-3 bg-muted/20 border-t border-border/60 flex items-center justify-between text-xs px-5">
-              <span className="flex items-center gap-1.5 text-[11px] text-emerald-600 dark:text-emerald-400 font-medium">
-                <CheckCircle2 className="w-3.5 h-3.5" /> {c.active ? 'Active' : 'Inactive'}
-              </span>
-              <span className="text-[11px] text-muted-foreground font-mono">
-                {getCurrencyDisplay(c.defaultCurrency)}
-              </span>
+              {c.active !== false ? (
+                <span className="flex items-center gap-1.5 text-[11px] text-emerald-600 dark:text-emerald-400 font-medium">
+                  <CheckCircle2 className="w-3.5 h-3.5" /> Active
+                </span>
+              ) : (
+                <span className="flex items-center gap-1.5 text-[11px] text-amber-600 dark:text-amber-400 font-medium">
+                  <AlertTriangle className="w-3.5 h-3.5" /> Deactivated
+                </span>
+              )}
+              <div className="flex items-center gap-3">
+                {canManage && (
+                  <button
+                    onClick={() => handleToggleActive(c)}
+                    className="text-xs text-muted-foreground hover:text-foreground underline decoration-dotted transition-colors"
+                    title={c.active !== false ? 'Hide from new requests' : 'Make available for new requests again'}
+                  >
+                    {c.active !== false ? 'Deactivate' : 'Reactivate'}
+                  </button>
+                )}
+                <span className="text-[11px] text-muted-foreground font-mono">
+                  {getCurrencyDisplay(c.defaultCurrency)}
+                </span>
+              </div>
             </div>
           </Card>
         ))}
@@ -325,37 +363,26 @@ export const CompaniesPage: React.FC = () => {
         </form>
       </Modal>
 
-      {/* Delete Confirmation Modal */}
-      <Modal
-        isOpen={!!companyToDelete}
-        onClose={() => setCompanyToDelete(null)}
-        title="Delete Company Confirmation"
-        description="Permanently remove company from organization"
-        maxWidth="sm"
-      >
-        <div className="space-y-4">
-          {deleteError && (
-            <div className="p-3 rounded-xl bg-destructive/10 border border-destructive/20 text-destructive text-xs">
-              {deleteError}
-            </div>
-          )}
-          <div className="p-3.5 rounded-xl bg-destructive/10 border border-destructive/20 flex items-start gap-3">
-            <AlertTriangle className="w-5 h-5 text-destructive shrink-0 mt-0.5" />
-            <div className="text-xs space-y-1">
-              <p className="font-bold text-foreground">
-                Are you sure you want to delete <span className="text-destructive font-mono">{companyToDelete?.name}</span>?
-              </p>
-              <p className="text-muted-foreground leading-relaxed">
-                This is blocked if any requests are still linked to this company.
-              </p>
-            </div>
-          </div>
-          <div className="flex items-center justify-end gap-2.5 pt-3 border-t border-border">
-            <Button type="button" variant="outline" size="sm" onClick={() => setCompanyToDelete(null)}>Cancel</Button>
-            <Button type="button" variant="destructive" size="sm" onClick={handleConfirmDelete} leftIcon={<Trash2 className="w-4 h-4" />}>Confirm Delete</Button>
-          </div>
-        </div>
-      </Modal>
+      {/* Delete / Deactivate */}
+      {(() => {
+        const usage = companyToDelete ? dataService.getCompanyUsage(companyToDelete.id) : { requests: 0, warehouses: 0 };
+        const inUseBy = usage.requests + usage.warehouses > 0
+          ? `${usage.requests} request(s) and ${usage.warehouses} warehouse(s)`
+          : undefined;
+        return (
+          <DeleteOrDeactivateModal
+            isOpen={!!companyToDelete}
+            onClose={() => setCompanyToDelete(null)}
+            entityLabel="company"
+            name={companyToDelete?.name || ''}
+            inUseBy={inUseBy}
+            isActive={companyToDelete?.active !== false}
+            error={deleteError}
+            onDelete={handleConfirmDelete}
+            onDeactivate={handleDeactivateFromModal}
+          />
+        );
+      })()}
     </div>
   );
 };

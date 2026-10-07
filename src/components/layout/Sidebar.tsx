@@ -41,7 +41,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ currentPath, onNavigate, onClo
 
   // Active shipments count (not yet delivered)
   const activeShipmentsCount = dataService.getRequests().filter(r =>
-    (r.status === 'approved' || r.shipmentStatus) && r.shipmentStatus !== 'delivered'
+    r.status !== 'cancelled' && (r.status === 'approved' || r.shipmentStatus) && r.shipmentStatus !== 'delivered'
   ).length;
 
   // Active team budget snippet

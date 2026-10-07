@@ -21,6 +21,7 @@ import {
   PackageOpen,
   FormInput,
   RotateCcw,
+  Trash2,
   Globe,
   Coins
 } from 'lucide-react';
@@ -91,6 +92,8 @@ export const RequestDetailPage: React.FC<RequestDetailPageProps> = ({ requestId,
   const [shipAddress, setShipAddress] = useState('');
   const [shipNote, setShipNote] = useState('');
   const [shipError, setShipError] = useState('');
+  const [isRemoveModalOpen, setIsRemoveModalOpen] = useState(false);
+  const [removeError, setRemoveError] = useState('');
 
   // This page only ever shows amounts converted TO GBP (the company's reporting
   // currency), never a switcher across other currencies.
@@ -204,6 +207,38 @@ export const RequestDetailPage: React.FC<RequestDetailPageProps> = ({ requestId,
       onUpdate();
     } catch (err: any) {
       setAppealError(err.message || 'Error submitting appeal');
+    }
+  };
+
+  const lifecycle = dataService.getRequestLifecycle(request);
+
+  const handleDeleteRequest = () => {
+    try {
+      dataService.deleteRequest(request.id, currentUser);
+      setIsRemoveModalOpen(false);
+      onUpdate();
+      onBack();
+    } catch (err: any) {
+      setRemoveError(err.message || 'Error deleting request');
+    }
+  };
+
+  const handleDeactivateRequest = () => {
+    try {
+      dataService.deactivateRequest(request.id, currentUser);
+      setIsRemoveModalOpen(false);
+      onUpdate();
+    } catch (err: any) {
+      setRemoveError(err.message || 'Error deactivating request');
+    }
+  };
+
+  const handleActivateRequest = () => {
+    try {
+      dataService.activateRequest(request.id, currentUser);
+      onUpdate();
+    } catch (err: any) {
+      alert(err.message || 'Error reactivating request');
     }
   };
 
@@ -399,6 +434,30 @@ export const RequestDetailPage: React.FC<RequestDetailPageProps> = ({ requestId,
               className="border-blue-400 text-blue-600 hover:bg-blue-50 dark:text-blue-400"
             >
               {advanceLabel}
+            </Button>
+          )}
+
+          {/* Super Admin: reactivate a deactivated request, or delete / deactivate */}
+          {isSuperAdmin && lifecycle.canActivate && (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handleActivateRequest}
+              leftIcon={<RotateCcw className="w-3.5 h-3.5" />}
+              className="border-emerald-400 text-emerald-600 hover:bg-emerald-50 dark:text-emerald-400"
+            >
+              Reactivate
+            </Button>
+          )}
+          {isSuperAdmin && (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => { setRemoveError(''); setIsRemoveModalOpen(true); }}
+              leftIcon={<Trash2 className="w-3.5 h-3.5" />}
+              className="border-destructive/40 text-destructive hover:bg-destructive/10"
+            >
+              Delete
             </Button>
           )}
         </div>
@@ -1087,6 +1146,56 @@ export const RequestDetailPage: React.FC<RequestDetailPageProps> = ({ requestId,
               Submit Appeal
             </Button>
           </div>
+        </div>
+      </Modal>
+
+      {/* Delete / Deactivate request (Super Admin) */}
+      <Modal
+        isOpen={isRemoveModalOpen}
+        onClose={() => setIsRemoveModalOpen(false)}
+        title="Delete Request"
+        description={lifecycle.canDelete ? 'This permanently removes the request' : 'In use — deactivate it to keep history intact'}
+        maxWidth="sm"
+      >
+        <div className="space-y-4">
+          {removeError && (
+            <div className="p-3 rounded-xl bg-destructive/10 border border-destructive/20 text-destructive text-xs">
+              {removeError}
+            </div>
+          )}
+          {lifecycle.canDelete ? (
+            <>
+              <div className="p-3.5 rounded-xl bg-destructive/10 border border-destructive/20 flex items-start gap-3">
+                <AlertTriangle className="w-5 h-5 text-destructive shrink-0 mt-0.5" />
+                <p className="text-xs text-foreground">
+                  <span className="font-bold">Delete <span className="font-mono text-destructive">{request.trackingNumber}</span>?</span>{' '}
+                  No budget has been charged for it, so nothing needs refunding. This cannot be undone.
+                </p>
+              </div>
+              <div className="flex items-center justify-end gap-2.5 pt-3 border-t border-border">
+                <Button type="button" variant="outline" size="sm" onClick={() => setIsRemoveModalOpen(false)}>Cancel</Button>
+                <Button type="button" variant="destructive" size="sm" onClick={handleDeleteRequest} leftIcon={<Trash2 className="w-4 h-4" />}>Confirm Delete</Button>
+              </div>
+            </>
+          ) : (
+            <>
+              <div className="p-3.5 rounded-xl bg-amber-500/10 border border-amber-500/20 text-xs space-y-1.5">
+                <p className="font-bold text-foreground">Can't delete — this request is in use</p>
+                <p className="text-muted-foreground leading-relaxed">{lifecycle.inUseReason}</p>
+                {lifecycle.canDeactivate && (
+                  <p className="text-foreground font-semibold pt-1">
+                    Deactivate it instead: it is cancelled, {formatWithGbp(request.budgetAmount || 0, budgetValueCurrency)} is refunded to {team.name}, and it leaves the shipment queue. You can reactivate it later (the budget is charged again).
+                  </p>
+                )}
+              </div>
+              <div className="flex items-center justify-end gap-2.5 pt-3 border-t border-border">
+                <Button type="button" variant="outline" size="sm" onClick={() => setIsRemoveModalOpen(false)}>Close</Button>
+                {lifecycle.canDeactivate && (
+                  <Button type="button" variant="primary" size="sm" onClick={handleDeactivateRequest}>Deactivate Instead</Button>
+                )}
+              </div>
+            </>
+          )}
         </div>
       </Modal>
 

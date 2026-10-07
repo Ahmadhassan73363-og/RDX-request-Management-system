@@ -23,6 +23,7 @@ import { PERMISSION_CATEGORIES } from '../../services/mockData';
 import { Card, CardHeader, CardTitle, CardContent } from '../../components/common/Card';
 import { Button } from '../../components/common/Button';
 import { Modal } from '../../components/common/Modal';
+import { DeleteOrDeactivateModal } from '../../components/common/DeleteOrDeactivateModal';
 import { Input } from '../../components/common/Input';
 import { Select } from '../../components/common/Select';
 import { Badge } from '../../components/common/Badge';
@@ -132,6 +133,17 @@ export const UsersListPage: React.FC = () => {
   const handlePromptDeleteUser = (user: User) => {
     setUserDeleteError('');
     setUserToDelete(user);
+  };
+
+  const handleDeactivateUserFromModal = () => {
+    if (!userToDelete) return;
+    try {
+      dataService.toggleUserStatus(userToDelete.id, currentUser);
+      setUserToDelete(null);
+      refreshUserData();
+    } catch (err: any) {
+      setUserDeleteError(err.message || 'Error deactivating user');
+    }
   };
 
   const handleConfirmDeleteUser = () => {
@@ -607,54 +619,23 @@ export const UsersListPage: React.FC = () => {
         </form>
       </Modal>
 
-      {/* Delete User Confirmation Modal */}
-      <Modal
-        isOpen={!!userToDelete}
-        onClose={() => setUserToDelete(null)}
-        title="Delete User Confirmation"
-        description="Permanently remove this user account"
-        maxWidth="sm"
-      >
-        <div className="space-y-4">
-          {userDeleteError && (
-            <div className="p-3 rounded-xl bg-destructive/10 border border-destructive/20 text-destructive text-xs">
-              {userDeleteError}
-            </div>
-          )}
-
-          <div className="p-3.5 rounded-xl bg-destructive/10 border border-destructive/20 flex items-start gap-3">
-            <AlertTriangle className="w-5 h-5 text-destructive shrink-0 mt-0.5" />
-            <div className="text-xs space-y-1">
-              <p className="font-bold text-foreground">
-                Are you sure you want to delete <span className="text-destructive font-mono">{userToDelete?.name}</span>?
-              </p>
-              <p className="text-muted-foreground leading-relaxed">
-                This will permanently remove the user account. Historical audit records and past requests will be preserved but no longer attributed to an active account.
-              </p>
-            </div>
-          </div>
-
-          <div className="flex items-center justify-end gap-2.5 pt-3 border-t border-border">
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              onClick={() => setUserToDelete(null)}
-            >
-              Cancel
-            </Button>
-            <Button
-              type="button"
-              variant="destructive"
-              size="sm"
-              onClick={handleConfirmDeleteUser}
-              leftIcon={<Trash2 className="w-4 h-4" />}
-            >
-              Confirm Delete
-            </Button>
-          </div>
-        </div>
-      </Modal>
+      {/* Delete / Deactivate User */}
+      {(() => {
+        const usage = userToDelete ? dataService.getUserUsage(userToDelete.id) : { requests: 0, teamsLed: 0 };
+        return (
+          <DeleteOrDeactivateModal
+            isOpen={!!userToDelete}
+            onClose={() => setUserToDelete(null)}
+            entityLabel="user"
+            name={userToDelete?.name || ''}
+            inUseBy={usage.requests + usage.teamsLed > 0 ? `${usage.requests} submitted request(s) and ${usage.teamsLed} team(s) they lead` : undefined}
+            isActive={userToDelete?.status === 'active'}
+            error={userDeleteError}
+            onDelete={handleConfirmDeleteUser}
+            onDeactivate={handleDeactivateUserFromModal}
+          />
+        );
+      })()}
     </div>
   );
 };

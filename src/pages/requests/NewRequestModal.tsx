@@ -105,7 +105,7 @@ export const NewRequestModal: React.FC<NewRequestModalProps> = ({ isOpen, onClos
     const firstCo = dataService.getCompanies().filter(c => c.active)[0];
     return firstCo?.name || '';
   });
-  // 5. Recipient (customer side)
+  // 5. Representative (recipient side): typed freely, or auto-filled when a Recipient customer is picked
   const [businessName, setBusinessName] = useState('');
   // 6. Category: Sample or Gift
   const [category, setCategory] = useState<'Sample' | 'Gift'>('Sample');
@@ -140,6 +140,14 @@ export const NewRequestModal: React.FC<NewRequestModalProps> = ({ isOpen, onClos
   // Derived: selected team object
   const selectedTeam = useMemo(() => teams.find(t => t.id === teamId), [teams, teamId]);
 
+  const handleCustomerChange = (newCustomerId: string) => {
+    setCustomerId(newCustomerId);
+    const customer = customers.find(c => c.id === newCustomerId);
+    if (customer) {
+      setBusinessName(customer.companyName);
+    }
+  };
+
   // When companyId changes, update ourCompanyName and default the currency to
   // that company's currency (the user can still override it afterwards).
   useEffect(() => {
@@ -149,14 +157,6 @@ export const NewRequestModal: React.FC<NewRequestModalProps> = ({ isOpen, onClos
       setCurrency(co.defaultCurrency || 'GBP');
     }
   }, [companyId, companies]);
-
-  const handleCustomerChange = (newCustomerId: string) => {
-    setCustomerId(newCustomerId);
-    const customer = customers.find(c => c.id === newCustomerId);
-    if (customer) {
-      setBusinessName(customer.companyName);
-    }
-  };
 
   // Multiple SKU Rows
   const [skuRows, setSkuRows] = useState<SkuRow[]>([
@@ -304,7 +304,7 @@ export const NewRequestModal: React.FC<NewRequestModalProps> = ({ isOpen, onClos
         return;
       }
       if (!businessName.trim()) {
-        setError('Please fill in the Recipient');
+        setError('Please fill in the Representative');
         return;
       }
       if (!ourCompanyName.trim()) {
@@ -706,34 +706,24 @@ export const NewRequestModal: React.FC<NewRequestModalProps> = ({ isOpen, onClos
                 </div>
               </div>
 
-              {/* Row 2: Recipient & System Invoice */}
+              {/* Row 2: Recipient (pick a saved customer) & Representative (typed freely) */}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <SearchableSelect
-                  label="Recipient (Customer) *"
+                  label="Recipient"
                   value={customerId}
                   onChange={(val) => handleCustomerChange(val)}
                   options={customers.map(c => ({ label: `${c.contactName} (${c.companyName})`, value: c.id }))}
-                  emptyLabel="None — enter manually"
+                  emptyLabel="None — type a representative below"
                   helperText={customerId ? 'Auto-filled from customer directory' : undefined}
                 />
-                {/* If no customer selected, allow manual entry */}
-                {!customerId && (
-                  <Input
-                    label="Recipient (Manual) *"
-                    placeholder="e.g. Acme Corporation"
-                    value={businessName}
-                    onChange={(e) => setBusinessName(e.target.value)}
-                    required
-                  />
-                )}
-                {customerId && (
-                  <Input
-                    label="Confirmed Recipient"
-                    value={businessName}
-                    onChange={(e) => setBusinessName(e.target.value)}
-                    helperText="Auto-filled · editable"
-                  />
-                )}
+                <Input
+                  label="Representative *"
+                  placeholder="e.g. Acme Corporation"
+                  value={businessName}
+                  onChange={(e) => setBusinessName(e.target.value)}
+                  helperText={customerId ? 'Auto-filled from the recipient · editable' : undefined}
+                  required
+                />
               </div>
 
               {/* System Invoice Number */}

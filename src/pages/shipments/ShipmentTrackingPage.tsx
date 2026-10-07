@@ -130,6 +130,7 @@ export const ShipmentTrackingPage: React.FC<ShipmentTrackingPageProps> = ({ onNa
   // Eligible shipment requests are those approved (or already assigned a shipment status)
   const shipmentRequests = useMemo(() => {
     return allRequests.filter(r => {
+      if (r.status === 'cancelled') return false; // deactivated requests leave the shipment queue
       const hasShipStatus = !!r.shipmentStatus;
       const isApproved = r.status === 'approved';
       if (!hasShipStatus && !isApproved) return false;
@@ -164,6 +165,7 @@ export const ShipmentTrackingPage: React.FC<ShipmentTrackingPageProps> = ({ onNa
       delivered: 0
     };
     allRequests.forEach(r => {
+      if (r.status === 'cancelled') return;
       if (r.status === 'approved' || r.shipmentStatus) {
         const st = (r.shipmentStatus || 'approved') as ShipmentStatus;
         if (counts[st] !== undefined) counts[st]++;

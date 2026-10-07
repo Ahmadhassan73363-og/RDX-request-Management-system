@@ -6,6 +6,7 @@ import { FormSchema } from '../../types/form';
 import { Card, CardHeader, CardTitle, CardContent } from '../../components/common/Card';
 import { Button } from '../../components/common/Button';
 import { FormBuilderPage } from './FormBuilderPage';
+import { DeleteOrDeactivateModal } from '../../components/common/DeleteOrDeactivateModal';
 import { useSyncedState } from '../../hooks/useSyncedState';
 
 interface FormsListPageProps {
@@ -26,10 +27,42 @@ export const FormsListPage: React.FC<FormsListPageProps> = ({ onNavigateToAssign
     setForms(dataService.getForms());
   };
 
-  const handleDeleteForm = (id: string) => {
-    if (confirm('Are you sure you want to delete this dynamic form?')) {
-      dataService.deleteForm(id, currentUser);
+  const [formToDelete, setFormToDelete] = useState<FormSchema | null>(null);
+  const [deleteError, setDeleteError] = useState('');
+
+  const handleDeleteForm = (form: FormSchema) => {
+    setDeleteError('');
+    setFormToDelete(form);
+  };
+
+  const handleConfirmDelete = () => {
+    if (!formToDelete) return;
+    try {
+      dataService.deleteForm(formToDelete.id, currentUser);
+      setFormToDelete(null);
       refreshForms();
+    } catch (err: any) {
+      setDeleteError(err.message || 'Error deleting form');
+    }
+  };
+
+  const handleDeactivateFromModal = () => {
+    if (!formToDelete) return;
+    try {
+      dataService.setFormActive(formToDelete.id, false, currentUser);
+      setFormToDelete(null);
+      refreshForms();
+    } catch (err: any) {
+      setDeleteError(err.message || 'Error deactivating form');
+    }
+  };
+
+  const handleToggleActive = (form: FormSchema) => {
+    try {
+      dataService.setFormActive(form.id, form.isActive === false, currentUser);
+      refreshForms();
+    } catch (err: any) {
+      alert(err.message || 'Error changing form status');
     }
   };
 
@@ -110,7 +143,7 @@ export const FormsListPage: React.FC<FormsListPageProps> = ({ onNavigateToAssign
                   )}
                   {canDeleteForms && (
                     <button
-                      onClick={() => handleDeleteForm(form.id)}
+                      onClick={() => handleDeleteForm(form)}
                       className="p-1 text-muted-foreground hover:text-destructive rounded"
                       title="Delete form"
                     >
@@ -129,9 +162,13 @@ export const FormsListPage: React.FC<FormsListPageProps> = ({ onNavigateToAssign
 
               <div className="p-2.5 rounded-lg bg-muted/40 border border-border/80 text-xs flex items-center justify-between font-mono">
                 <span className="text-muted-foreground">{form.fields.length} Active Fields</span>
-                <span className="text-emerald-600 dark:text-emerald-400 font-semibold flex items-center gap-1">
-                  <CheckCircle2 className="w-3 h-3" /> Ready for Assignment
-                </span>
+                {form.isActive !== false ? (
+                  <span className="text-emerald-600 dark:text-emerald-400 font-semibold flex items-center gap-1">
+                    <CheckCircle2 className="w-3 h-3" /> Ready for Assignment
+                  </span>
+                ) : (
+                  <span className="text-amber-600 dark:text-amber-400 font-semibold">Deactivated</span>
+                )}
               </div>
             </div>
 
@@ -139,18 +176,46 @@ export const FormsListPage: React.FC<FormsListPageProps> = ({ onNavigateToAssign
               <span className="text-[11px] text-muted-foreground">
                 Author: {form.createdByName}
               </span>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => setEditingFormId(form.id)}
-                className="text-[11px] h-7 px-2.5"
-              >
-                Inspect / Edit
-              </Button>
+              <div className="flex items-center gap-3">
+                {canEditForms && (
+                  <button
+                    onClick={() => handleToggleActive(form)}
+                    className="text-[11px] text-muted-foreground hover:text-foreground underline decoration-dotted transition-colors"
+                    title={form.isActive !== false ? 'Hide from new requests' : 'Make available for new requests again'}
+                  >
+                    {form.isActive !== false ? 'Deactivate' : 'Reactivate'}
+                  </button>
+                )}
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setEditingFormId(form.id)}
+                  className="text-[11px] h-7 px-2.5"
+                >
+                  Inspect / Edit
+                </Button>
+              </div>
             </div>
           </Card>
         ))}
       </div>
+
+      {(() => {
+        const usage = formToDelete ? dataService.getFormUsage(formToDelete.id) : { requests: 0 };
+        return (
+          <DeleteOrDeactivateModal
+            isOpen={!!formToDelete}
+            onClose={() => setFormToDelete(null)}
+            entityLabel="form"
+            name={formToDelete?.title || ''}
+            inUseBy={usage.requests > 0 ? `${usage.requests} submitted request(s)` : undefined}
+            isActive={formToDelete?.isActive !== false}
+            error={deleteError}
+            onDelete={handleConfirmDelete}
+            onDeactivate={handleDeactivateFromModal}
+          />
+        );
+      })()}
     </div>
   );
 };
